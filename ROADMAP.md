@@ -120,3 +120,9 @@ ustx 结构、MIDI 头。
 - 不训练任何声学模型：手写剖面 + 自校准在 2 句上够用，但没有真标注就不值得再调
 - 不做端到端"文本→歌"：不给可编辑参数，和本项目的目的相反
 - 不从 PDF 转谱：音乐字体私用区字形，转谱风险高于收益
+
+## 致谢
+
+VSQ4 输出格式与"语调教"的整套思路参照 **VvTalk**
+（<https://github.com/GalaxieT/VvTalk>，前身 TyTalk <https://github.com/GalaxieT/TyTalk>）。
+详见 README 的致谢一节。VvTalk 未收入本仓库，需要请自行 clone 到项目根目录。
