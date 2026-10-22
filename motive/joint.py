@@ -66,7 +66,23 @@ def build_world(params, pitch_lo=57, pitch_hi=76):
     P = [p for p in range(pitch_lo, pitch_hi + 1) if (p - tonic) % 12 in scale]
     vocab = theory.CHORD_VOCAB[mode]
     roles = [c[2] for c in vocab]
-    trans = np.array([[theory.ROLE_COST[(a, b)] for b in roles] for a in roles])
+    roots = [c[1][0] for c in vocab]
+    targets = [c[3] for c in vocab]
+    pens = [c[5] if len(c) > 5 else 0.0 for c in vocab]
+    m = len(vocab)
+
+    # Transition cost: a secondary dominant must resolve to its target, every
+    # other move follows the T/S/D grammar, and each chord carries its own
+    # idiomaticity penalty (64 chords, vii, borrowed chords).
+    trans = np.zeros((m, m))
+    for a in range(m):
+        for b in range(m):
+            if targets[a] is not None:
+                trans[a, b] = 0.0 if (roots[b] - targets[a]) % 12 == 0 else 2.0
+            else:
+                trans[a, b] = theory.ROLE_COST[(roles[a], roles[b])]
+            trans[a, b] += pens[b]
+
     pcs = [{(tonic + o) % 12 for o in c[1]} for c in vocab]
     npitch, m = len(P), len(vocab)
     in_chord = np.zeros((m, npitch), dtype=bool)
@@ -93,7 +109,10 @@ def _targets(params):
 def _is_boundary(params, i, chord_rate):
     """Chord may change at slot i.  params["chord_at"] overrides the fixed rate,
     which is how a melisma (several notes inside one syllable) keeps its chords
-    aligned with syllable boundaries instead of with notes."""
+    aligned with syllable boundaries instead of with notes.  params["harmony_free"]
+    lets the chord move at every note, with a change cost doing the pacing."""
+    if params.get("harmony_free"):
+        return True
     ca = params.get("chord_at")
     if ca is not None:
         return bool(ca[i])
@@ -134,6 +153,9 @@ def solve_joint(params, W, chord_rate=2, verbose=False):
         tone_term = W["w_tone"] * _tone_cost(dirs[i], world)
         if _is_boundary(params, i, chord_rate):
             chord_term = (world["trans"] + np.eye(m, dtype=float) * 0.55)
+            w_change = float(params.get("harmony_change_cost", 0.0))
+            if w_change:
+                chord_term = chord_term + (np.ones((m, m)) - np.eye(m)) * w_change
         else:
             chord_term = np.where(same_slot, 0.0, INF)
 

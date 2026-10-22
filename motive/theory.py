@@ -25,31 +25,78 @@ ROLE_COST = {
     ("D", "T"): 0.0, ("D", "S"): 1.4, ("D", "D"): 1.0,
 }
 
-# (label, pitch-class offsets from tonic, function)
+# Chord entry: (label, pitch-class offsets from tonic, function,
+#               resolution target root offset or None, bass offset, penalty)
+# - `bass offset` makes inversions real: the bass note (and therefore the
+#   voice leading) differs from the root.
+# - `target` marks a secondary dominant: it resolves to that root, and the
+#   transition cost enforces it.
+# - `penalty` is a small idiomaticity cost (64 chords are unstable, etc.)
 CHORD_VOCAB = {
     "major": [
-        ("I",   (0, 4, 7),     "T"),
-        ("ii",  (2, 5, 9),     "S"),
-        ("iii", (4, 7, 11),    "T"),
-        ("IV",  (5, 9, 0),     "S"),
-        ("V",   (7, 11, 2),    "D"),
-        ("vi",  (9, 0, 4),     "T"),
-        ("vii", (11, 2, 5),    "D"),
-        ("V7",  (7, 11, 2, 5), "D"),
-        ("ii7", (2, 5, 9, 0),  "S"),
+        ("I",    (0, 4, 7),      "T", None, 0,  0.00),
+        ("I6",   (0, 4, 7),      "T", None, 4,  0.15),
+        ("I64",  (0, 4, 7),      "T", None, 7,  0.40),
+        ("ii",   (2, 5, 9),      "S", None, 2,  0.00),
+        ("ii6",  (2, 5, 9),      "S", None, 5,  0.15),
+        ("ii7",  (2, 5, 9, 0),   "S", None, 2,  0.05),
+        ("iii",  (4, 7, 11),     "T", None, 4,  0.20),
+        ("IV",   (5, 9, 0),      "S", None, 5,  0.00),
+        ("IV6",  (5, 9, 0),      "S", None, 9,  0.15),
+        ("IV7",  (5, 9, 0, 4),   "S", None, 5,  0.05),
+        ("V",    (7, 11, 2),     "D", None, 7,  0.00),
+        ("V6",   (7, 11, 2),     "D", None, 11, 0.15),
+        ("V7",   (7, 11, 2, 5),  "D", None, 7,  0.00),
+        ("V65",  (7, 11, 2, 5),  "D", None, 11, 0.05),
+        ("V43",  (7, 11, 2, 5),  "D", None, 2,  0.25),
+        ("vi",   (9, 0, 4),      "T", None, 9,  0.00),
+        ("vi7",  (9, 0, 4, 7),   "T", None, 9,  0.05),
+        ("vii",  (11, 2, 5),     "D", None, 11, 0.25),
+        ("vii7", (11, 2, 5, 9),  "D", None, 11, 0.10),
+        ("V/V",  (2, 6, 9),      "D", 7,  2,  0.10),
+        ("V7/V", (2, 6, 9, 0),   "D", 7,  2,  0.05),
+        ("V/ii", (9, 1, 4),      "D", 2,  9,  0.15),
+        ("V/vi", (4, 8, 11),     "D", 9,  4,  0.15),
+        ("vii/V", (6, 9, 0),     "D", 7,  6,  0.30),
     ],
     "minor": [
-        ("i",   (0, 3, 7),     "T"),
-        ("ii",  (2, 5, 8),     "S"),
-        ("III", (3, 7, 10),    "T"),
-        ("iv",  (5, 8, 0),     "S"),
-        ("V",   (7, 11, 2),    "D"),
-        ("VI",  (8, 0, 3),     "T"),
-        ("VII", (10, 2, 5),    "D"),
-        ("V7",  (7, 11, 2, 5), "D"),
+        ("i",    (0, 3, 7),      "T", None, 0,  0.00),
+        ("i6",   (0, 3, 7),      "T", None, 3,  0.15),
+        ("i64",  (0, 3, 7),      "T", None, 7,  0.40),
+        ("ii",   (2, 5, 8),      "S", None, 2,  0.05),
+        ("ii6",  (2, 5, 8),      "S", None, 5,  0.20),
+        ("III",  (3, 7, 10),     "T", None, 3,  0.00),
+        ("III6", (3, 7, 10),     "T", None, 7,  0.15),
+        ("iv",   (5, 8, 0),      "S", None, 5,  0.00),
+        ("iv6",  (5, 8, 0),      "S", None, 8,  0.15),
+        ("IV",   (5, 9, 0),      "S", None, 5,  0.15),
+        ("V",    (7, 11, 2),     "D", None, 7,  0.00),
+        ("V7",   (7, 11, 2, 5),  "D", None, 7,  0.00),
+        ("V65",  (7, 11, 2, 5),  "D", None, 11, 0.05),
+        ("VI",   (8, 0, 3),      "T", None, 8,  0.00),
+        ("VI6",  (8, 0, 3),      "T", None, 0,  0.15),
+        ("VII",  (10, 2, 5),     "D", None, 10, 0.20),
+        ("VII6", (10, 2, 5),     "D", None, 2,  0.30),
+        ("vii",  (11, 2, 5),     "D", None, 11, 0.25),
+        ("vii7", (11, 2, 5, 8),  "D", None, 11, 0.10),
+        ("V/iv", (0, 4, 7),      "D", 5,  0,  0.15),
+        ("V/VI", (3, 7, 10),     "D", 8,  3,  0.20),
+        ("V/VII", (2, 6, 9),     "D", 10, 2,  0.20),
+        ("V/III", (10, 2, 5),    "D", 3,  10, 0.20),
+        ("N6",   (1, 5, 8),      "S", None, 1,  0.35),
     ],
 }
 CHORD_VOCAB["penta"] = CHORD_VOCAB["major"]
+
+
+def voicing(chord, tonic, low=40, high=67, upper=3):
+    """MIDI pitches for a chord entry: bass note + a closed upper voicing."""
+    label, offs, role, target, bass_off, pen = chord
+    pcs = [(tonic + o) % 12 for o in offs]
+    bpc = (tonic + bass_off) % 12
+    bass = next((q for q in range(low, low + 12) if q % 12 == bpc), low)
+    ups = [q for q in range(55, high + 1) if q % 12 in pcs][:upper]
+    return [bass] + ups
 
 # --- Mandarin tone archetypes -------------------------------------------------
 # Semitone offsets across the syllable, used to *synthesise* test prosody and to

@@ -95,9 +95,8 @@ def chords_from_runs(runs, slots, params, world):
     for (j0, j1, c) in runs:
         start = slots[j0]["start"]
         end = slots[j1]["start"] + slots[j1]["dur"]
-        pcs = {(params["tonic"] + o) % 12 for o in world["vocab"][c][1]}
-        for q in [q for q in range(52, 68) if q % 12 in pcs][:3]:
-            out.append((start, end - start, q))
+        for q in theory.voicing(world["vocab"][c], params["tonic"]):
+            out.append((start, end - start, q, 70 if q < 52 else 62))
     return out
 
 
@@ -125,6 +124,10 @@ def main():
     ap.add_argument("--grace", action="store_true", help="allow 倚音 grace notes")
     ap.add_argument("--cell-theme", default="none",
                     choices=list(rhythm.THEMES), help="rhythmic cell theme")
+    ap.add_argument("--harmony", default="fixed", choices=["fixed", "free"],
+                    help="free = the DP paces chord changes itself")
+    ap.add_argument("--change-cost", type=float, default=1.2,
+                    help="cost of changing chord with --harmony free")
     ap.add_argument("--variation-every", type=int, default=4,
                     help="augment one cell every N syllables (0 = never)")
     ap.add_argument("--override", default="", help="force note counts, e.g. 5:3,7:4")
@@ -179,6 +182,9 @@ def main():
         if a.cell_theme != "none" else None
     rstats = rhythm.stats(rp)
     p2 = realize.to_params(params, slots, chord_at)
+    if a.harmony == "free":
+        p2["harmony_free"] = True
+        p2["harmony_change_cost"] = a.change_cost
 
     if a.from_slots:
         doc = realize.load_slots(a.from_slots)
@@ -250,21 +256,24 @@ def main():
                  % (s["start"], ch, ">" if s["first"] else "",
                     nm, cl, sy + 1, s["k"] + 1, s["dur"], v))
     L.append("")
-    L.append("和弦进行 : %s   (每 %s 个音节换一次)"
-             % ("-".join(prog), style.get("chord_every", 2)))
+    L.append("和弦进行 : %s   (%s)"
+             % ("-".join(prog),
+                "和声节奏由 DP 决定" if a.harmony == "free"
+                else "每 %s 个音节换一次" % style.get("chord_every", 2)))
     L.append("")
     L.append("=" * 88)
     L.append("C. 单音版 vs 转音版")
     L.append("=" * 88)
-    L.append("%-10s %6s %8s %10s %8s %9s" %
-             ("", "音符数", "每音节", "轮廓RMS", "最大音程", "级进比"))
-    L.append("%-10s %6d %8.2f %10.2f %8d %9.2f" %
+    L.append("%-10s %6s %8s %10s %8s %9s %9s" %
+             ("", "音符数", "每音节", "轮廓RMS", "最大音程", "级进比", "非和弦音"))
+    L.append("%-10s %6d %8.2f %10.2f %8d %9.2f %9d" %
              ("单音版", len(plain_path), 1.0, pev["contour_rms"],
-              pev["max_leap"], pev["stepwise_ratio"]))
+              pev["max_leap"], pev["stepwise_ratio"], pev["harmony_violations"]))
     if ev is not None:
-        L.append("%-10s %6d %8.2f %10.2f %8d %9.2f" %
+        L.append("%-10s %6d %8.2f %10.2f %8d %9.2f %9d" %
                  ("转音版", len(path), len(path) / max(1, len(plain_path)),
-                  ev["contour_rms"], ev["max_leap"], ev["stepwise_ratio"]))
+                  ev["contour_rms"], ev["max_leap"], ev["stepwise_ratio"],
+                  ev["harmony_violations"]))
     L.append("")
     L.append("参数：melisma=%s pattern=%s cell-theme=%s swing=%s push=%s grace=%s override=%s"
              % (style.get("melisma"), pattern, a.cell_theme,

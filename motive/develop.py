@@ -235,11 +235,10 @@ def main():
             label = runs[0]["chord"]
             ci = [j for j, v in enumerate(world["vocab"]) if v[0] == label]
             if ci:
-                pcs = {(params["tonic"] + offset + o) % 12
-                       for o in world["vocab"][ci[0]][1]}
+                pcs = theory.voicing(world["vocab"][ci[0]], params["tonic"] + offset)
         if pcs:
-            for q in [q for q in range(52, 68) if q % 12 in pcs][:3]:
-                chords.append((t0, bar_beats * 0.92, q))
+            for q in pcs:
+                chords.append((t0, bar_beats * 0.92, q, 70 if q < 52 else 62))
         cont = [n["midi"] for n in notes]
         rows.append(dict(bar=idx + 1, kind=kind, semis=offset,
                          notes=len(notes), tonic=theory.note_name(params["tonic"] + offset),
