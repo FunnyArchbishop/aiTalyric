@@ -1,0 +1,21 @@
+# third-party reference clone: clone it yourself, it is ~200 MB and not ours
+vvTalk/
+
+# generated audio, boundary CSVs and analysis output
+testdata/
+out*/
+*.mid
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+
+# reference material kept out of the repo
+*.pdf
+*.vsqx
+*.ustx
+slots_edit.json
+grace_test.json

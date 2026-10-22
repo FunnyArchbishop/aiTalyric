@@ -1,0 +1,122 @@
+{
+  "_doc": {
+    "melisma": "max extra notes per syllable (0 = one note per syllable)",
+    "sub_points": "how many points sample the syllable's F0 shape (3..7)",
+    "note_rules": "thresholds that decide the note count",
+    "patterns": "duration split per note count, per style name",
+    "grace": "optional short leading note (倚音)",
+    "swing": "0..1, delays off-beat 8ths",
+    "push": "per-syllable 16th offsets, e.g. '0,1,0,-1'",
+    "per_syllable": "1-based syllable index -> forced note count",
+    "accents": "MIDI velocities by onset position"
+  },
+  "melisma": 2,
+  "sub_points": 5,
+  "note_rules": {
+    "two_above": 0.55,
+    "three_above": 0.7,
+    "turn_eps": 0.12,
+    "held_beats": 1.75,
+    "run_beats": 2.5
+  },
+  "patterns": {
+    "tail": {
+      "1": [
+        1.0
+      ],
+      "2": [
+        0.6,
+        0.4
+      ],
+      "3": [
+        0.46,
+        0.32,
+        0.22
+      ],
+      "4": [
+        0.42,
+        0.24,
+        0.19,
+        0.15
+      ]
+    },
+    "even": {
+      "1": [
+        1.0
+      ],
+      "2": [
+        0.5,
+        0.5
+      ],
+      "3": [
+        0.3333333333333333,
+        0.3333333333333333,
+        0.3333333333333333
+      ],
+      "4": [
+        0.25,
+        0.25,
+        0.25,
+        0.25
+      ]
+    },
+    "onset": {
+      "1": [
+        1.0
+      ],
+      "2": [
+        0.4,
+        0.6
+      ],
+      "3": [
+        0.28,
+        0.38,
+        0.34
+      ],
+      "4": [
+        0.22,
+        0.26,
+        0.28,
+        0.24
+      ]
+    },
+    "run": {
+      "1": [
+        1.0
+      ],
+      "2": [
+        0.5,
+        0.5
+      ],
+      "3": [
+        0.5,
+        0.25,
+        0.25
+      ],
+      "4": [
+        0.4,
+        0.2,
+        0.2,
+        0.2
+      ]
+    }
+  },
+  "grace": {
+    "enabled": false,
+    "min_beats": 1.0,
+    "cells": 1,
+    "rise_above": 0.55
+  },
+  "swing": 0.0,
+  "push": "",
+  "per_syllable": {},
+  "accents": {
+    "downbeat": 94,
+    "offbeat": 88,
+    "weak": 74,
+    "swung": 90,
+    "grace": 66
+  },
+  "chord_every": 2,
+  "cell": 0.25
+}

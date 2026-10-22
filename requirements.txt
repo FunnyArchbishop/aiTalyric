@@ -1,0 +1,5 @@
+numpy>=1.24
+pypinyin>=0.49
+
+# optional: only needed to open the reference score PDF
+pypdf>=4.0
