@@ -3,6 +3,27 @@
 把汉语语调抽象成一小组**动机参数**，再用一个**联合约束优化**同时解出旋律与和声。
 核心不是"把音高翻译成音符"，而是"把语调变成目标函数里的一项"。
 
+```bash
+pip install -r requirements.txt
+cd motive && python selftest.py        # 18 项回归，全绿
+python run_groove.py --cell-theme sync --harmony free \
+    --vsqx out/x.vsqx --ustx out/x.ustx    # 一句 → MIDI + VOCALOID 工程 + OpenUtau 工程
+```
+
+流水线：`音频/文本 → 音节边界 + F0 → 动机参数 → 转音与律动展开 → 联合解码 → MIDI / .vsqx / .ustx`
+
+| 阶段 | 文件 | 说明 |
+|---|---|---|
+| 前端 | `align.py` `tts_wav.py` `f0_from_wav.py` `vsqx_pit.py` `f0_from_csv.py` | 三种可互换入口 |
+| 抽象 | `prosody.py` | 调性/音域/速度无关的动机参数 |
+| 展开 | `realize.py` `rhythm.py` | 一字多音 + 节奏型复用 |
+| 解码 | `joint.py` `theory.py` | 旋律与和弦的联合 DP |
+| 发展 | `develop.py` | 8 小节结构 + 轮廓守护 |
+| 导出 | `export.py` `midi_io.py` | .vsqx / .ustx / .mid |
+| 验证 | `selftest.py` `validate_align.py` | 一键回归 |
+
+进度与验收记录见 [`ROADMAP.md`](ROADMAP.md)。
+
 ## 一句话的形式化
 
 ```
@@ -14,11 +35,11 @@ E =  Σ_i w_c·((p_i − target_i)/σ)²      旋律贴合语调轮廓（软目�
 ```
 
 状态 = (和弦, 音高)，一次 DP 解出全局最优。和弦只在槽位边界可换，
-所以状态数只有 |C|×|P| ≈ 100–200，毫秒级。
+所以状态数只有 |C|×|P| ≈ 300–400，毫秒级。和弦词汇 24 个（含转位/七和弦/副属）。
 
 **为什么必须联合**：两步法（先定旋律再配和弦）里，旋律一冻结，某些音程
 就只能硬配；联合解码可以在"轻微牺牲轮廓"与"轻微破坏和声"之间做全局取舍。
-实测代价可量化（见下）。
+实测：总能量 3.05 vs 6.24（两句上 25%–68%）。
 
 ## 五层
 

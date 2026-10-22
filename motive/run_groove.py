@@ -24,6 +24,7 @@ import json
 import os
 
 import align
+import export
 import joint
 import midi_io
 import realize
@@ -128,6 +129,10 @@ def main():
                     help="free = the DP paces chord changes itself")
     ap.add_argument("--change-cost", type=float, default=1.2,
                     help="cost of changing chord with --harmony free")
+    ap.add_argument("--vsqx", default="", help="export a VOCALOID4 .vsqx")
+    ap.add_argument("--ustx", default="", help="export an OpenUtau .ustx")
+    ap.add_argument("--portamento", type=float, default=0.0,
+                    help="semitones of slide into each note, written as a PIT layer")
     ap.add_argument("--variation-every", type=int, default=4,
                     help="augment one cell every N syllables (0 = never)")
     ap.add_argument("--override", default="", help="force note counts, e.g. 5:3,7:4")
@@ -282,6 +287,24 @@ def main():
 
     mid = os.path.join(a.out, "groove.mid")
     midi_io.write_midi(mid, a.tempo, [("melody", 73, melody), ("chords", 0, chord_notes)])
+
+    if a.vsqx or a.ustx:
+        chars = params.get("chars") or []
+        finals = []
+        if chars:
+            syls = align.parse_syllables("".join(chars), params.get("pinyin"))
+            finals = [s["final"] for s in syls]
+        lyr = export.lyrics_for(slots, chars, finals)
+        notes = [dict(start=m[0], dur=m[1], midi=int(m[2]),
+                      lyric=(lyr[j] if j < len(lyr) else "a"))
+                 for j, m in enumerate(melody)]
+        if a.vsqx:
+            export.write_vsqx(a.vsqx, notes, a.tempo, portamento=a.portamento)
+            chk = export.check_vsqx(a.vsqx, expect_notes=len(notes))
+            print("[ok] %s  %s" % (a.vsqx, chk))
+        if a.ustx:
+            export.write_ustx(a.ustx, notes, a.tempo)
+            print("[ok]", a.ustx)
 
     if a.dump_slots:
         rows = []
