@@ -118,12 +118,30 @@ python validate_align.py        # 两个自动验证
 ```bash
 python run_groove.py                                   # 合成句 A，默认转音（13 音）
 python run_groove.py --melisma 3 --swing 0.6 --push 0,0,1,0,-1
+python run_groove.py --cell-theme sync                 # 节奏型复用（真律动，22 音）
+python run_groove.py --cell-theme sparse --variation-every 3
 python run_groove.py --wav testdata/tts.wav --text 我想和你一起看海 \
     --tones 3,3,2,3,1,3,4,3 --melisma 2 --swing 0.5
 python run_groove.py --dump-style style.json && python run_groove.py --style-file style.json
 python run_groove.py --override 5:3,7:4 --grace
 python run_groove.py --dump-slots slots.json && python run_groove.py --from-slots slots.json
 ```
+
+### 节奏型复用（`rhythm.py`）
+
+转音解决"一字多音"，`--cell-theme` 解决"律动"。节奏型是一个 4 个十六分的
+时值比（如 `[2,1,1]`），在一个句子里按 `A B A B A C B A` 这样反复出现，
+每 N 个音节加花一次（把最长的部分劈成两半，总时值不变）。
+
+| 型名 | 型库 | 听感 |
+|---|---|---|
+| `sync` | `[2,1,1] [3,1] [1,1,2] [4]` | 短长短的切分 |
+| `dotted` | `[3,1] [2,2] [1,1,1,1]` | 附点八分 + 十六分 |
+| `flowing` | `[2,2] [1,1,2] [2,1,1]` | 以八分为主，偶尔推一下 |
+| `sparse` | `[4] [3,1] [2,1,1]` | 长音为主，少分割 |
+
+报告会给出复用率、最高频型出现次数和型序列。**注意**：型是 4 个十六分，而实测音节只有
+2 个十六分时型会被截断，所以启用节奏型时 `run_groove.py` 会自动把网格从 0.25 细化到 0.125 拍。
 
 效果（同一句合成语调，5 点轮廓 + 默认参数）：
 

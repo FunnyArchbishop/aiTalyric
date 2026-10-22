@@ -27,6 +27,7 @@ import align
 import joint
 import midi_io
 import realize
+import rhythm
 import run_demo
 import theory
 
@@ -122,6 +123,10 @@ def main():
     ap.add_argument("--push", default=None)
     ap.add_argument("--chord-every", type=int, default=None)
     ap.add_argument("--grace", action="store_true", help="allow 倚音 grace notes")
+    ap.add_argument("--cell-theme", default="none",
+                    choices=list(rhythm.THEMES), help="rhythmic cell theme")
+    ap.add_argument("--variation-every", type=int, default=4,
+                    help="augment one cell every N syllables (0 = never)")
     ap.add_argument("--override", default="", help="force note counts, e.g. 5:3,7:4")
     ap.add_argument("--style-file", default="")
     ap.add_argument("--dump-style", default="")
@@ -150,8 +155,29 @@ def main():
     overrides = parse_override(a.override)
 
     params = load_params(a, style)
+
+    # A rhythmic cell is 4 sixteenths; a syllable measured at ~0.5 beat only has
+    # room for 2 sixteenths, so the cell would be truncated and never heard.
+    # Refine the grid until the cell fits inside a typical syllable.
+    if a.cell_theme != "none":
+        cell = float(style.get("cell", realize.GRID))
+        med_beats = sorted(params["beats"])[len(params["beats"]) // 2]
+        need = max(sum(c) for c in rhythm.THEMES[a.cell_theme]["cells"])
+        while med_beats / cell < need and cell > 0.0625:
+            cell /= 2.0
+        if abs(cell - float(style.get("cell", realize.GRID))) > 1e-9:
+            print("[grid] cell %.3f -> %.3f beats so a %d-sixteenth cell fits the syllables"
+                  % (float(style.get("cell", realize.GRID)), cell, need))
+        style["cell"] = cell
+
     slots, chord_at, info = realize.realize(params, style=style,
-                                            pattern=pattern, overrides=overrides)
+                                            pattern=pattern, overrides=overrides,
+                                            rhythm_theme=a.cell_theme,
+                                            variation_every=a.variation_every)
+    rp = rhythm.plan([max(1, int(round(b / float(style.get("cell", realize.GRID)))))
+                      for b in params["beats"]], a.cell_theme, a.variation_every) \
+        if a.cell_theme != "none" else None
+    rstats = rhythm.stats(rp)
     p2 = realize.to_params(params, slots, chord_at)
 
     if a.from_slots:
@@ -199,6 +225,14 @@ def main():
     L.append("=" * 88)
     L.append(realize.describe(params, slots, info))
     L.append("")
+    if rstats["top"]:
+        L.append("=" * 88)
+        L.append("A2. 节奏型（%s）：复用率 %.2f，最高频型出现 %d 次，变化 %d 处"
+                 % (a.cell_theme, rstats["reuse"], rstats["top"], rstats["varied"]))
+        L.append("=" * 88)
+        L.append("型序列 : %s" % rstats["pattern"])
+        L.append(rhythm.describe(rp, params.get("chars")))
+        L.append("")
     L.append("=" * 88)
     L.append("B. 展开后的旋律（16 分格）")
     L.append("=" * 88)
@@ -232,10 +266,10 @@ def main():
                  ("转音版", len(path), len(path) / max(1, len(plain_path)),
                   ev["contour_rms"], ev["max_leap"], ev["stepwise_ratio"]))
     L.append("")
-    L.append("参数：melisma=%s pattern=%s swing=%s push=%s grace=%s override=%s"
-             % (style.get("melisma"), pattern, style.get("swing"),
-                style.get("push") or "-", style["grace"].get("enabled"),
-                a.override or "-"))
+    L.append("参数：melisma=%s pattern=%s cell-theme=%s swing=%s push=%s grace=%s override=%s"
+             % (style.get("melisma"), pattern, a.cell_theme,
+                style.get("swing"), style.get("push") or "-",
+                style["grace"].get("enabled"), a.override or "-"))
 
     mid = os.path.join(a.out, "groove.mid")
     midi_io.write_midi(mid, a.tempo, [("melody", 73, melody), ("chords", 0, chord_notes)])

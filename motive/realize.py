@@ -85,6 +85,33 @@ def dump_style(path):
 
 # ------------------------------------------------------------------ profiles
 
+def _tile_to(parts, span):
+    """Keep a cell's ratio pattern but make it sum exactly to `span`."""
+    total = sum(parts)
+    if total == span:
+        return list(parts)
+    return _split_cells_from_ratios(parts, span)
+
+
+def _split_cells_from_ratios(parts, span):
+    n = max(1, len(parts))
+    total = float(sum(parts)) or float(n)
+    cells = [max(1, int(round(span * p / total))) for p in parts[:n]]
+    diff = span - sum(cells)
+    k = n - 1
+    guard = 0
+    while diff != 0 and cells and guard < 1000:
+        if diff > 0:
+            cells[k] += 1
+            diff -= 1
+        elif cells[k] > 1:
+            cells[k] -= 1
+            diff += 1
+        k = (k - 1) % n
+        guard += 1
+    return cells
+
+
 def _sample(profile, n):
     """n representative pitches (normalised) across the syllable shape."""
     if n <= 1:
@@ -163,7 +190,8 @@ def _split_cells(total, n, pattern_name, style):
 
 # ------------------------------------------------------------------ realize
 
-def realize(params, style=None, pattern="tail", overrides=None):
+def realize(params, style=None, pattern="tail", overrides=None,
+            rhythm_theme=None, variation_every=4):
     """Return (slots, chord_at, per-syllable info)."""
     st = style or load_style(None)
     cell = float(st.get("cell", GRID))
@@ -191,6 +219,20 @@ def realize(params, style=None, pattern="tail", overrides=None):
         plan.append(dict(n=n, why=why, exc=exc, turn=turn,
                          span=max(n, int(round(beats[i] / cell)))))
 
+    # 1b. rhythmic cells: the theme decides how many notes and how long they are,
+    #     unless the syllable was overridden by hand
+    rhythm = None
+    if rhythm_theme and rhythm_theme != "none":
+        import rhythm as _rhythm
+        rhythm = _rhythm.plan([p["span"] for p in plan], rhythm_theme, variation_every)
+        if rhythm:
+            for i, rp in enumerate(rhythm):
+                if i in forced:
+                    continue
+                plan[i]["n"] = len(rp["parts"])
+                plan[i]["why"] = "cell " + rp["letter"]
+                plan[i]["letter"] = rp["letter"]
+
     # 2. syllabus placement on the grid (monotonic; push rushes/drags, never reorders)
     starts, cursor = [], 0
     for i in range(n_syl):
@@ -206,7 +248,12 @@ def realize(params, style=None, pattern="tail", overrides=None):
         n = plan[i]["n"]
         span = (starts[i + 1] - starts[i]) if i + 1 < n_syl else plan[i]["span"]
         span = max(span, n)
-        cells = _split_cells(span, n, pattern, st)
+        if rhythm and i not in forced:
+            parts = _tile_to(rhythm[i]["parts"], span)
+            n = len(parts)
+            cells = parts
+        else:
+            cells = _split_cells(span, n, pattern, st)
         targets = _sample(prof[i], n)
         sy_start = len(slots)
 
