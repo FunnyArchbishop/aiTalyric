@@ -119,9 +119,12 @@ def solve_joint(params, W, chord_rate=2, verbose=False):
     S = m * npitch
 
     prev = _emit(params, world, W, targets, 0, chord_rate)
-    start_bonus = np.array([0.0 if world["roles"][c] == "T" else 1.2
-                            for c in range(m)])[:, None]
-    prev = prev + start_bonus
+    if not params.get("start_chord_free"):
+        want = params.get("start_role")
+        start_bonus = np.array([
+            0.0 if (world["roles"][c] == (want or "T")) else 3.0
+            for c in range(m)])[:, None]
+        prev = prev + start_bonus
 
     back = np.zeros((n, m, npitch), dtype=np.int32)
 
@@ -148,8 +151,11 @@ def solve_joint(params, W, chord_rate=2, verbose=False):
         prev = flat.min(axis=0).reshape(m, npitch)
 
     term = np.zeros((m, npitch))
-    term += np.where(np.array([world["roles"][c] for c in range(m)])[:, None] == "T",
-                     0.0, 3.0)
+    if params.get("must_end_tonic"):
+        term += np.where(np.arange(m)[:, None] == world["tonic_idx"], 0.0, 6.0)
+    if params.get("end_pref", True):
+        term += np.where(np.array([world["roles"][c] for c in range(m)])[:, None] == "T",
+                         0.0, 3.0)
     term[world["tonic_idx"], :] -= 0.0
     for pi, p in enumerate(P):
         if p % 12 != params["tonic"] % 12:
