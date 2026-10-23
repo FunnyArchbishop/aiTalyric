@@ -372,5 +372,5 @@ contourRMS=0.64  倒字=0  非和弦音=1  级进比=0.86
 git clone https://github.com/GalaxieT/VvTalk.git vvTalk
 ```
 
-参考曲目《一半一半》（飞侠Shrimp）只作为风格参照（转音密度、律动感），
+参考曲目《一半一半》只作为风格参照（转音密度、律动感），
 曲谱与音频未收入本仓库。
