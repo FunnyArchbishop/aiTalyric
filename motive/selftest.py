@@ -144,11 +144,41 @@ def t_midi():
           "%d bytes" % len(b))
 
 
+def t_gui():
+    import gui
+    m = gui.build_model(dict(gui.DEFAULTS))
+    check("gui: model builds", m["metrics"]["notes"] > 0,
+          "%d notes, %s" % (m["metrics"]["notes"], m["metrics"]["progression"]))
+    try:
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+    except Exception as exc:                     # no display: skip, not a failure
+        print("  SKIP  gui: no display (%s)" % exc)
+        return
+    app = gui.App(root, dict(gui.DEFAULTS))
+    root.update()
+    app.draw()
+    items = len(app.canvas.find_all())
+    before = app.model["metrics"]["notes"]
+    app.state["_var_melisma"].set(0)
+    app._commit("melisma", "int")
+    app.rebuild()
+    app.draw()
+    after = app.model["metrics"]["notes"]
+    check("gui: piano roll drew", items > 20 and len(app.canvas.find_all()) > 20,
+          "%d items" % items)
+    check("gui: control moves the pipeline", after < before,
+          "melisma 0: %d -> %d notes" % (before, after))
+    root.destroy()
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("aiTalyric selftest")
     print("=" * 60)
-    for fn in (t_decode, t_align, t_melisma, t_rhythm, t_develop, t_export, t_midi):
+    for fn in (t_decode, t_align, t_melisma, t_rhythm, t_develop, t_export, t_midi,
+               t_gui):
         print("[%s]" % fn.__name__[2:])
         fn()
     print("=" * 60)

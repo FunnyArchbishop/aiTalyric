@@ -5,7 +5,8 @@
 
 ```bash
 pip install -r requirements.txt
-cd motive && python selftest.py        # 18 项回归，全绿
+cd motive && python selftest.py        # 21 项回归，全绿
+python gui.py                          # 调参台：滑杆 + 钢琴卷帘 + 预览播放
 mkdir -p out
 python run_groove.py --cell-theme sync --harmony free \
     --vsqx out/x.vsqx --ustx out/x.ustx    # 一句 → MIDI + VOCALOID 工程 + OpenUtau 工程
@@ -15,6 +16,7 @@ python run_groove.py --cell-theme sync --harmony free \
 
 | 阶段 | 文件 | 说明 |
 |---|---|---|
+| 界面 | `gui.py` | 图形化调参台（tkinter，零安装） |
 | 前端 | `align.py` `tts_wav.py` `f0_from_wav.py` `vsqx_pit.py` `f0_from_csv.py` | 三种可互换入口 |
 | 抽象 | `prosody.py` | 调性/音域/速度无关的动机参数 |
 | 展开 | `realize.py` `rhythm.py` | 一字多音 + 节奏型复用 |
