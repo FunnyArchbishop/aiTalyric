@@ -135,6 +135,8 @@ def main():
                     help="semitones of slide into each note, written as a PIT layer")
     ap.add_argument("--variation-every", type=int, default=4,
                     help="augment one cell every N syllables (0 = never)")
+    ap.add_argument("--max-repeat", type=int, default=2,
+                    help="break runs of the same pitch longer than this (0 = off)")
     ap.add_argument("--override", default="", help="force note counts, e.g. 5:3,7:4")
     ap.add_argument("--style-file", default="")
     ap.add_argument("--dump-style", default="")
@@ -219,7 +221,8 @@ def main():
         lines = ["# rendered from %s (%d notes)" % (a.from_slots, len(melody))]
         prog = [r[0] for r in runs]
     else:
-        path, ev, world = joint.solve_joint(p2, W0, style.get("chord_every", 2))
+        path, ev, world = joint.solve_joint(p2, W0, style.get("chord_every", 2),
+                                            max_repeat=(a.max_repeat or None))
         melody = [(s["start"], s["dur"] * 0.95, world["P"][p],
                    realize.accent_velocity(s, style))
                   for s, (i, c, p) in zip(slots, path)]
@@ -228,7 +231,8 @@ def main():
         prog = [world["vocab"][c][0] for (_, _, c) in runs]
 
     _, ppath, _ = None, None, None
-    plain_path, pev, _ = joint.solve_joint(params, W0, style.get("chord_every", 2))
+    plain_path, pev, _ = joint.solve_joint(params, W0, style.get("chord_every", 2),
+                                           max_repeat=(a.max_repeat or None))
 
     L = []
     L.append("=" * 88)
@@ -269,16 +273,18 @@ def main():
     L.append("=" * 88)
     L.append("C. 单音版 vs 转音版")
     L.append("=" * 88)
-    L.append("%-10s %6s %8s %10s %8s %9s %9s" %
-             ("", "音符数", "每音节", "轮廓RMS", "最大音程", "级进比", "非和弦音"))
-    L.append("%-10s %6d %8.2f %10.2f %8d %9.2f %9d" %
+    L.append("%-10s %6s %8s %10s %8s %9s %9s %9s" %
+             ("", "音符数", "每音节", "轮廓RMS", "最大音程", "级进比",
+              "非和弦音", "最长同音"))
+    L.append("%-10s %6d %8.2f %10.2f %8d %9.2f %9d %9d" %
              ("单音版", len(plain_path), 1.0, pev["contour_rms"],
-              pev["max_leap"], pev["stepwise_ratio"], pev["harmony_violations"]))
+              pev["max_leap"], pev["stepwise_ratio"], pev["harmony_violations"],
+              pev.get("max_repeat", 1)))
     if ev is not None:
-        L.append("%-10s %6d %8.2f %10.2f %8d %9.2f %9d" %
+        L.append("%-10s %6d %8.2f %10.2f %8d %9.2f %9d %9d" %
                  ("转音版", len(path), len(path) / max(1, len(plain_path)),
                   ev["contour_rms"], ev["max_leap"], ev["stepwise_ratio"],
-                  ev["harmony_violations"]))
+                  ev["harmony_violations"], ev.get("max_repeat", 1)))
     L.append("")
     L.append("参数：melisma=%s pattern=%s cell-theme=%s swing=%s push=%s grace=%s override=%s"
              % (style.get("melisma"), pattern, a.cell_theme,

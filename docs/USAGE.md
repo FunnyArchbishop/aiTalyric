@@ -306,6 +306,7 @@ path, ev, world = joint.solve_joint(p2, W, 2)
 --swing 0.5               延迟后半拍八分   --push 0,1,0,-1
 --cell-theme {none,sync,dotted,flowing,sparse}   --variation-every 4
 --harmony {fixed,free}     --change-cost 1.2
+--max-repeat 2            同一音最多连续几个（0=不限）
 --chord-every 2            --grace          --override 5:3,7:4
 --style-file s.json        --dump-style s.json
 --dump-slots x.json        --from-slots x.json
@@ -333,6 +334,29 @@ python validate_align.py                            # 合成真值 + 真实语�
 --phrase {A,B,C} --stretch 1.0 --sweep --tone-strict
 ```
 
+### 同音反复是怎么处理的（`--max-repeat`）
+
+同一个音连着弹四五次听起来像卡键。原因是两个真 bug，都已修：
+
+1. **候选音域写死 57–76**，低音目标被夹在底线上 → 所有想往下走的音都变成同一个最低音。
+   现在音域由目标轮廓推导（`min(target)-3 .. max(target)+3`，再夹到 40–88）。
+2. **转音的多个音会塌到同一个音高**：音节内部轮廓本来就平（一声或过度平滑），
+   采样 4 次得到 4 个相同的目标；而和声项又把它们全拽到和弦音上。
+   现在会先按声调原型补上运动（二声上行 / 四声下行 / 一三声回转），
+   并把目标吸附到**互不相同**的音级；转音内部的非骨架音只按 0.35 权重计和声协和，
+   它们本来就可以是非和弦音。
+
+剩下的长同音由 `--max-repeat` 做一次**局部修正**：先正常解码，找出超过阈值的同音段，
+只对那几拍的那个音高加罚再解一次——目标函数本身不动，所以不会伤到声调约束。
+
+| `--max-repeat` | 同音最长 | 倒字（A 句） | 总能量 |
+|---|---|---|---|
+| 不限 | 3 | 0 | 5.10 |
+| 2（默认） | 2 | 1 | 7.04 |
+| 1 | 2 | 2 | 7.42 |
+
+**这是一个显式的取舍：不想要重复，就得让一点轮廓/声调。** 要不要这么换，由你决定。
+
 ---
 
 ## 五、配方
@@ -345,6 +369,7 @@ python validate_align.py                            # 合成真值 + 真实语�
 | 强律动 | `--cell-theme sync --swing 0.5 --push 0,0,1,0,-1` |
 | 和声更骚 | `--harmony free --change-cost 0.8`（越小换得越勤） |
 | 严格依字行腔 | `examples/ex05` 里 `w_tone=3.0`，或 `run_demo.py --tone-strict` |
+| 不要同音反复 | `--max-repeat 1`（默认 2；代价见下） |
 | 换调 | `--tonic 62`（D）`--mode minor` |
 | 更长的结构 | `develop.py --bars 16 --modulate 3` |
 | 拿去唱 | `--vsqx x.vsqx --portamento 1.0`，或 `--ustx x.ustx` 进 OpenUtau |

@@ -44,7 +44,7 @@ DEFAULTS = dict(
     phrase="A", wav="", text="", tones="", pinyin="",
     tonic=60, mode="major", span=12.0, stretch=1.0, smooth=1, tempo=120.0,
     melisma=2, pattern="tail", cell_theme="none", variation=4,
-    swing=0.0, push="", grace=False,
+    swing=0.0, push="", grace=False, max_repeat=2,
     harmony="fixed", change_cost=1.2, chord_every=2,
     w_contour=1.0, sigma=2.0, w_tone=1.2, w_harmony=1.0, w_motion=0.8,
 )
@@ -91,7 +91,8 @@ def build_model(state):
     W = dict(w_contour=float(state["w_contour"]), sigma=float(state["sigma"]),
              w_tone=float(state["w_tone"]), w_harmony=float(state["w_harmony"]),
              w_motion=float(state["w_motion"]))
-    path, ev, world = joint.solve_joint(p2, W, style.get("chord_every", 2))
+    path, ev, world = joint.solve_joint(p2, W, style.get("chord_every", 2),
+                                        max_repeat=(int(state["max_repeat"]) or None))
 
     melody = [(slots[j]["start"], slots[j]["dur"] * 0.95, world["P"][p],
                realize.accent_velocity(slots[j], style)) for j, (_, _, p) in enumerate(path)]
@@ -116,6 +117,7 @@ def build_model(state):
                    tone_violations=ev["tone_violations"],
                    non_chord=ev["harmony_violations"], max_leap=ev["max_leap"],
                    stepwise=ev["stepwise_ratio"], total=ev["total"],
+                   max_repeat=ev.get("max_repeat", 1),
                    progression="-".join(r["label"] for r in runs))
     return dict(params=params, slots=slots, info=info, melody=melody,
                 chord_notes=chord_notes, runs=runs, metrics=metrics,
@@ -238,7 +240,8 @@ class App:
         t = self._tabs["转音"]
         self._scale(t, "melisma（多加几个音）", "melisma", 0, 4, 1, row=0)
         self._combo(t, "时值模式", "pattern", list(realize.DEFAULT_STYLE["patterns"]), row=1)
-        self._check(t, "允许倚音 grace", "grace", row=2)
+        self._spin(t, "最长同音（0=不限）", "max_repeat", 0, 4, row=2)
+        self._check(t, "允许倚音 grace", "grace", row=3)
 
         t = self._tabs["律动"]
         self._combo(t, "节奏型", "cell_theme", list(rhythm.THEMES), row=0)
@@ -429,9 +432,9 @@ class App:
                 "音符 %d | 每音节 %.2f | 和弦 %d (%s) | 换和弦代价 %.1f"
                 % (m["notes"], m["notes"] / max(1, m["syllables"]), m["chords"],
                    self.state["harmony"], float(self.state["change_cost"])),
-                "轮廓RMS %.2f | 倒字 %d | 非和弦音 %d | 最大音程 %d | 级进比 %.2f | 总能量 %.2f"
+                "轮廓RMS %.2f | 倒字 %d | 非和弦音 %d | 最大音程 %d | 级进比 %.2f | 最长同音 %d | 总能量 %.2f"
                 % (m["contour_rms"], m["tone_violations"], m["non_chord"],
-                   m["max_leap"], m["stepwise"], m["total"]),
+                   m["max_leap"], m["stepwise"], m.get("max_repeat", 1), m["total"]),
                 "逐音节：" + " ".join("%d" % i["notes"] for i in self.model["info"]),
                 "音高：" + " ".join(theory.note_name(n[2]) for n in self.model["melody"])]
         self.text.configure(state="normal")

@@ -51,7 +51,9 @@ def demo_params(phrase="A"):
 
 def t_decode():
     p = demo_params()
-    path, ev, _ = joint.solve_joint(p, W0, 2)
+    # the two-step baseline has no anti-repeat repair, so compare objectives
+    # with the repair off on both sides
+    path, ev, _ = joint.solve_joint(p, W0, 2, max_repeat=None)
     plain_path, plain_ev, _ = joint.solve_two_step(p, W0, 2)
     check("decode: 8 notes", len(plain_path) == 8, "%d" % len(plain_path))
     check("decode: joint <= two-step", ev["total"] <= plain_ev["total"] + 1e-9,
@@ -75,6 +77,13 @@ def t_melisma():
     # every chord change must sit on a syllable's first note
     bad = [j for j in range(len(slots)) if ca[j] and not slots[j]["first"]]
     check("melisma: chords stay on syllable boundaries", not bad, "%d boundaries" % sum(ca))
+
+    # a run of identical pitches sounds like a stuck key
+    p2 = realize.to_params(p, slots, ca)
+    path, ev, _ = joint.solve_joint(p2, W0, 2)
+    check("melisma: no long repeated run", ev.get("max_repeat", 1) <= 2,
+          "longest run %d, repairs %d" % (ev.get("max_repeat", 1),
+                                          ev.get("repeat_repairs", 0)))
 
 
 def t_rhythm():

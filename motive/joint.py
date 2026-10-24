@@ -24,7 +24,7 @@ INF = 1e9
 
 def _motion_table():
     t = np.full(64, 1.9)
-    t[0] = 0.06      # repeated note
+    t[0] = 0.30      # repeated note: not free any more, it is the dullest move
     t[1] = 0.00
     t[2] = 0.02
     t[3] = 0.10
@@ -59,10 +59,23 @@ def _motion_for(d):
     return MOTION[np.clip(d, 0, 63)]
 
 
-def build_world(params, pitch_lo=57, pitch_hi=76):
+def build_world(params, pitch_lo=None, pitch_hi=None):
     tonic = params["tonic"]
     mode = params["mode"]
     scale = theory.SCALES[mode]
+    # The candidate range must contain the targets.  A fixed 57..76 window
+    # clamps low targets onto the floor, and every note that wants to go lower
+    # then comes out as the same pitch - which is exactly the "same note over
+    # and over" that sounds wrong.
+    if pitch_lo is None or pitch_hi is None:
+        tg = _targets(params)
+        lo = int(min(tg)) - 3
+        hi = int(max(tg)) + 3
+        if hi - lo < 14:
+            mid = (hi + lo) / 2.0
+            lo, hi = int(mid - 7), int(mid + 7)
+        pitch_lo = max(40, lo) if pitch_lo is None else pitch_lo
+        pitch_hi = min(88, hi) if pitch_hi is None else pitch_hi
     P = [p for p in range(pitch_lo, pitch_hi + 1) if (p - tonic) % 12 in scale]
     vocab = theory.CHORD_VOCAB[mode]
     roles = [c[2] for c in vocab]
@@ -123,12 +136,75 @@ def _emit(params, world, W, targets, i, chord_rate):
     P = world["Parr"]
     sigma = W["sigma"]
     e = W["w_contour"] * ((P - targets[i]) / sigma) ** 2          # (npitch,)
+    bias = params.get("bias_pitch") or {}
+    if i in bias:                       # search aid: discourage a pitch that
+        pen = float(params.get("repeat_penalty", 2.0))
+        e = e + np.where(P == bias[i], pen, 0.0)
     strong = 1.5 if _is_boundary(params, i, chord_rate) else 0.6
+    hw = params.get("harmony_w")
+    if hw is not None:
+        strong *= float(hw[i])
     e_h = W["w_harmony"] * strong * (~world["in_chord"]).astype(float)  # (m,npitch)
     return e[None, :] + e_h
 
 
-def solve_joint(params, W, chord_rate=2, verbose=False):
+def solve_joint(params, W, chord_rate=2, verbose=False, max_repeat=2,
+                refine_rounds=2):
+    """Decode melody + harmony.  With max_repeat set, runs of the same pitch
+    longer than that are broken up by re-decoding with a local penalty.
+
+    A run of identical pitches sounds like a stuck note, but making repeats
+    expensive globally fights the tone system (a level-tone pair *should* repeat)
+    and measurably raises 倒字.  So the objective stays untouched and the repair
+    is a separate, local search step: find over-long runs, discourage exactly
+    those pitches at exactly those slots, decode again.
+    """
+    if max_repeat is None:
+        path, ev, world = _solve_once(params, W, chord_rate)
+        ev["repeat_repairs"] = 0
+        return path, ev, world
+
+    p = dict(params)
+    p["bias_pitch"] = dict(params.get("bias_pitch") or {})
+    cands = []
+    for _ in range(max(1, refine_rounds) + 1):
+        path, ev, world = _solve_once(p, W, chord_rate)
+        seq = [world["P"][x[2]] for x in path]
+        longest = 1 if seq else 0
+        cur = 1
+        for a, b in zip(seq, seq[1:]):
+            cur = cur + 1 if a == b else 1
+            longest = max(longest, cur)
+        cands.append((longest, ev["total"], path, ev, world, len(p["bias_pitch"])))
+        if longest <= int(max_repeat):
+            break
+        bad, i = {}, 0
+        while i < len(seq):
+            j = i
+            while j + 1 < len(seq) and seq[j + 1] == seq[i]:
+                j += 1
+            if j - i + 1 > int(max_repeat):
+                for k in range(i + 1, j + 1):
+                    bad[k] = seq[i]
+            i = j + 1
+        if not bad:
+            break
+        changed = False
+        for k, v in bad.items():
+            if p["bias_pitch"].get(k) != v:
+                p["bias_pitch"][k] = v
+                changed = True
+        if not changed:
+            break
+    # fewest repeated notes first, then the best objective; the repair may cost
+    # a little energy, which is the honest price of not sounding like a stuck key
+    longest, total, path, ev, world, nbias = min(cands, key=lambda c: (c[0], c[1]))
+    ev["repeat_repairs"] = nbias
+    ev["max_repeat"] = longest
+    return path, ev, world
+
+
+def _solve_once(params, W, chord_rate=2, verbose=False):
     world = build_world(params)
     targets = _targets(params)
     dirs = [g["dir"] for g in params["gestures"]]
@@ -208,6 +284,9 @@ def evaluate(path, params, W, chord_rate):
     for (i, c, p) in path:
         out["contour"] += W["w_contour"] * ((P[p] - targets[i]) / sigma) ** 2
         strong = 1.5 if _is_boundary(params, i, chord_rate) else 0.6
+        hw = params.get("harmony_w")
+        if hw is not None:
+            strong *= float(hw[i])
         if not world["in_chord"][c, p]:
             out["harmony"] += W["w_harmony"] * strong
             out["harmony_violations"] += 1
@@ -229,6 +308,14 @@ def evaluate(path, params, W, chord_rate):
     out["contour_rms"] = (out["contour"] / max(1e-9, W["w_contour"] * len(path))) ** 0.5 * sigma
     out["max_leap"] = max((abs(x) for x in leaps), default=0)
     out["stepwise_ratio"] = (sum(1 for x in leaps if abs(x) <= 2) / len(leaps)) if leaps else 1.0
+    # repeated-note stats: a run of identical pitches is dull, so it is visible
+    seq = [P[p] for (_, _, p) in path]
+    best = cur = 1 if seq else 0
+    for a, b in zip(seq, seq[1:]):
+        cur = cur + 1 if a == b else 1
+        best = max(best, cur)
+    out["max_repeat"] = best
+    out["repeat_pairs"] = sum(1 for a, b in zip(seq, seq[1:]) if a == b)
     return out
 
 

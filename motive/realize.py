@@ -17,7 +17,10 @@ boundaries through params["chord_at"].
 import json
 import math
 
+import theory
+
 GRID = 0.25          # beats per 16th at 4/4
+MIN_MOVE_SEMIS = 2.0  # consecutive notes inside a syllable must differ this much
 
 DEFAULT_STYLE = {
     "_doc": {
@@ -125,6 +128,83 @@ def _sample(profile, n):
         f = x - i0
         out.append(profile[i0] * (1 - f) + profile[i1] * f)
     return out
+
+
+def _ornament_offsets(n, direction, span_semis=2.6):
+    """Semitone offsets for n notes: a rising line, a falling line, or a turn."""
+    if n <= 1:
+        return [0.0]
+    if direction > 0:
+        return [span_semis * k / (n - 1) for k in range(n)]
+    if direction < 0:
+        return [span_semis * (n - 1 - k) / (n - 1) for k in range(n)]
+    pattern = [0.0, span_semis * 0.5, 0.0, -span_semis * 0.5]
+    return [pattern[k % 4] for k in range(n)]
+
+
+def melisma_targets(profile, n, params, tone):
+    """Pitch targets for the notes inside one syllable.
+
+    A measured syllable shape can be nearly flat (a level tone, or a heavily
+    smoothed contour), and sampling it four times yields four *identical* notes
+    - the "same note hammered over and over" that sounds wrong.  When the
+    measured shape does not move enough, the tone's own archetype supplies the
+    motion instead: a rising line for 2nd tone, a falling line for 4th, a turn
+    for 1st/3rd.  Consecutive notes then never share a pitch.
+    """
+    targets = _sample(profile, n)
+    if n <= 1:
+        return targets, False
+    half = max(0.5, float(params.get("span_semitones", 12.0)) / 2.0
+               * float(params.get("stretch", 1.0)))
+    spread = (max(targets) - min(targets)) * half
+    if spread < MIN_MOVE_SEMIS:
+        centre = sum(targets) / len(targets)
+        offs = _ornament_offsets(n, theory.TONE_DIR.get(tone, 0))
+        targets = [max(-1.2, min(1.2, centre + o / half)) for o in offs]
+        return _distinct_scale_targets(targets, params), True
+    return _distinct_scale_targets(targets, params), False
+
+
+def _distinct_scale_targets(targets, params):
+    """Snap targets to distinct scale pitches, keeping the intended direction.
+
+    Even a moving contour can collapse onto one pitch once it is quantised to
+    the scale and the chord term pulls at it, and that is how three identical
+    notes appear.  Forcing the *targets* apart means the contour term actively
+    asks for movement instead of tolerating a repeat.
+    """
+    tonic = int(params.get("tonic", 60))
+    scale = theory.SCALES.get(params.get("mode", "major"), theory.SCALES["major"])
+    half = max(0.5, float(params.get("span_semitones", 12.0)) / 2.0
+               * float(params.get("stretch", 1.0)))
+
+    def scale_pitches_near(semi):
+        lo, hi = int(round(semi)) - 7, int(round(semi)) + 8
+        return [p for p in range(lo, hi + 1) if (p - tonic) % 12 in scale]
+
+    out = []
+    for k, t in enumerate(targets):
+        semi = tonic + t * half
+        cands = scale_pitches_near(semi)
+        out.append(min(cands, key=lambda p: abs(p - semi)) if cands else int(round(semi)))
+
+    if len(set(out)) == len(out):
+        return list(targets)            # nothing collapses: leave the contour alone
+
+    fixed = []
+    for k, p in enumerate(out):
+        if fixed and p == fixed[-1]:
+            rising = (k > 0 and targets[k] >= targets[k - 1])
+            cands = scale_pitches_near(tonic + targets[k] * half)
+            if rising:
+                nxt = [q for q in cands if q > p]
+                p = nxt[0] if nxt else p
+            else:
+                nxt = [q for q in cands if q < p]
+                p = nxt[-1] if nxt else p
+        fixed.append(p)
+    return [max(-1.2, min(1.2, (q - tonic) / half)) for q in fixed]
 
 
 def turning(profile):
@@ -254,7 +334,11 @@ def realize(params, style=None, pattern="tail", overrides=None,
             cells = parts
         else:
             cells = _split_cells(span, n, pattern, st)
-        targets = _sample(prof[i], n)
+        tone = 0
+        tlist = params.get("tones") or []
+        if i < len(tlist):
+            tone = tlist[i]
+        targets, ornamented = melisma_targets(prof[i], n, params, tone)
         sy_start = len(slots)
 
         # optional grace note (倚音) when the syllable starts much lower than it goes
@@ -280,7 +364,9 @@ def realize(params, style=None, pattern="tail", overrides=None,
         chord_at[sy_start] = (i % max(1, int(st.get("chord_every", 2))) == 0)
         info.append(dict(syl=i, notes=n + (1 if grace_cells else 0),
                          melisma_notes=n, grace=bool(grace_cells),
-                         why=plan[i]["why"], excursion=plan[i]["exc"],
+                         ornament=ornamented,
+                         why=plan[i]["why"] + (" +ornament" if ornamented else ""),
+                         excursion=plan[i]["exc"],
                          turn=plan[i]["turn"], cells=cells,
                          total_cells=max(off, span)))
 
@@ -320,6 +406,13 @@ def to_params(params, slots, chord_at):
     # broken chord, not 转音; a grace note may leap, so it is not penalised
     out["motion_w"] = [1.0 if (s["first"] and s["k"] <= 0) else (1.0 if s.get("grace") else 2.6)
                        for s in slots]
+    # ornamental notes inside a syllable are not structural: they may be
+    # non-chord tones, otherwise every melisma note snaps onto the chord tone
+    # and the syllable becomes the same note played several times
+    out["harmony_w"] = [1.0 if s["first"] else 0.35 for s in slots]
+    # inside a syllable, never let two neighbouring notes share a pitch: the
+    # melisma is supposed to move, not to hammer
+    out["no_repeat"] = [False if s["first"] else True for s in slots]
     return out
 
 
