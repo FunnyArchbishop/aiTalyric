@@ -77,10 +77,12 @@ def build_model(state):
     # refine the grid so a 4-sixteenth cell actually fits, as the CLI does
     if state["cell_theme"] != "none":
         cell = float(style.get("cell", realize.GRID))
-        med = sorted(params["beats"])[len(params["beats"]) // 2]
+        med = sorted(params["beats"])[len(params["beats"]) // 2] * float(state["elongate"])
         need = max(sum(c) for c in rhythm.THEMES[state["cell_theme"]]["cells"])
         while med / cell < need and cell > 0.0625:
             cell /= 2.0
+        if float(state["min_note"]):
+            cell = max(cell, float(state["min_note"]) / 2.0)
         style["cell"] = cell
 
     slots, chord_at, info = realize.realize(

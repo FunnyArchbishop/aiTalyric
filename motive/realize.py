@@ -276,6 +276,10 @@ def _enforce_min(cells, cell, min_note):
     A 32nd-note run is unsingable, and it is what you get when a 4-sixteenth
     rhythm cell is applied to a half-beat syllable.  Merging keeps the total
     exactly the same, so the grid never moves; only the note count drops.
+
+    The short part is absorbed by its *longer* neighbour, not the shorter one:
+    merging into the shorter neighbour equalises everything and you end up with
+    48 identical notes, which is the opposite of a rhythm.
     """
     cells = list(cells)
     while len(cells) > 1:
@@ -283,14 +287,16 @@ def _enforce_min(cells, cell, min_note):
         if cells[k] * cell >= min_note - 1e-9:
             break
         left, right = k > 0, k + 1 < len(cells)
-        if left and (not right or cells[k - 1] <= cells[k + 1]):
-            cells[k - 1] += cells[k]
-            del cells[k]
+        if left and right:
+            j = k - 1 if cells[k - 1] >= cells[k + 1] else k + 1
+        elif left:
+            j = k - 1
         elif right:
-            cells[k] += cells[k + 1]
-            del cells[k + 1]
+            j = k + 1
         else:
             break
+        cells[j] += cells[k]
+        del cells[k]
     return cells
 
 
