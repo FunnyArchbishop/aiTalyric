@@ -194,7 +194,8 @@ def main():
                                             pattern=pattern, overrides=overrides,
                                             rhythm_theme=a.cell_theme,
                                             variation_every=a.variation_every)
-    rp = rhythm.plan([max(1, int(round(b / float(style.get("cell", realize.GRID)))))
+    cell_used = float(style.get("cell", realize.GRID))
+    rp = rhythm.plan([max(1, int(round(b * float(a.elongate) / cell_used)))
                       for b in params["beats"]], a.cell_theme, a.variation_every) \
         if a.cell_theme != "none" else None
     rstats = rhythm.stats(rp)
@@ -257,6 +258,9 @@ def main():
         L.append("=" * 88)
         L.append("型序列 : %s" % rstats["pattern"])
         L.append(rhythm.describe(rp, params.get("chars")))
+        L.append("实际时值（按 min_note=%.2f 合并后）：%s"
+                 % (float(style.get("min_note", 0.5)),
+                    " ".join(str(i["cells"]) for i in info)))
         L.append("")
     L.append("=" * 88)
     L.append("B. 展开后的旋律（16 分格）")
