@@ -53,6 +53,8 @@ DEFAULT_STYLE = {
                 4: [0.40, 0.20, 0.20, 0.20]},
     },
     "grace": {"enabled": False, "min_beats": 1.0, "cells": 1, "rise_above": 0.55},
+    "min_note": 0.5,      # beats: nothing shorter than an eighth note by default
+    "elongate": 1.0,      # stretch the whole phrase (the same notes, slower)
     "swing": 0.0,
     "push": "",
     "per_syllable": {},
@@ -268,6 +270,30 @@ def _split_cells(total, n, pattern_name, style):
     return cells
 
 
+def _enforce_min(cells, cell, min_note):
+    """Merge notes until every note is at least `min_note` beats long.
+
+    A 32nd-note run is unsingable, and it is what you get when a 4-sixteenth
+    rhythm cell is applied to a half-beat syllable.  Merging keeps the total
+    exactly the same, so the grid never moves; only the note count drops.
+    """
+    cells = list(cells)
+    while len(cells) > 1:
+        k = min(range(len(cells)), key=lambda i: cells[i])
+        if cells[k] * cell >= min_note - 1e-9:
+            break
+        left, right = k > 0, k + 1 < len(cells)
+        if left and (not right or cells[k - 1] <= cells[k + 1]):
+            cells[k - 1] += cells[k]
+            del cells[k]
+        elif right:
+            cells[k] += cells[k + 1]
+            del cells[k + 1]
+        else:
+            break
+    return cells
+
+
 # ------------------------------------------------------------------ realize
 
 def realize(params, style=None, pattern="tail", overrides=None,
@@ -275,8 +301,10 @@ def realize(params, style=None, pattern="tail", overrides=None,
     """Return (slots, chord_at, per-syllable info)."""
     st = style or load_style(None)
     cell = float(st.get("cell", GRID))
+    min_note = float(st.get("min_note", 0.5))
+    elongate = max(0.25, float(st.get("elongate", 1.0)))
     prof = params.get("sub_contour")
-    beats = params["beats"]
+    beats = [b * elongate for b in params["beats"]]
     n_syl = len(beats)
     if not prof:
         prof = [[c, c, c] for c in params["contour"]]
@@ -328,12 +356,16 @@ def realize(params, style=None, pattern="tail", overrides=None,
         n = plan[i]["n"]
         span = (starts[i + 1] - starts[i]) if i + 1 < n_syl else plan[i]["span"]
         span = max(span, n)
+        # never more notes than fit at the minimum note length
+        capacity = max(1, int(span * cell / min_note + 1e-9))
+        n = min(n, capacity)
         if rhythm and i not in forced:
             parts = _tile_to(rhythm[i]["parts"], span)
-            n = len(parts)
-            cells = parts
+            cells = _enforce_min(parts, cell, min_note)
+            n = len(cells)
         else:
-            cells = _split_cells(span, n, pattern, st)
+            cells = _enforce_min(_split_cells(span, n, pattern, st), cell, min_note)
+            n = len(cells)
         tone = 0
         tlist = params.get("tones") or []
         if i < len(tlist):

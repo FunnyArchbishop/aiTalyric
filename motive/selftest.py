@@ -71,9 +71,13 @@ def t_align():
 def t_melisma():
     p = demo_params()
     st = realize.load_style(None)
+    st["elongate"] = 2.0          # a spoken-rate syllable has no room for 2 notes
     slots, ca, info = realize.realize(p, style=st)
     check("melisma: more notes than syllables", len(slots) > len(p["beats"]),
           "%d notes / %d syllables" % (len(slots), len(p["beats"])))
+    shortest = min(s["dur"] for s in slots)
+    check("melisma: no note shorter than an eighth", shortest >= 0.5 - 1e-9,
+          "shortest %.2f beats" % shortest)
     # every chord change must sit on a syllable's first note
     bad = [j for j in range(len(slots)) if ca[j] and not slots[j]["first"]]
     check("melisma: chords stay on syllable boundaries", not bad, "%d boundaries" % sum(ca))

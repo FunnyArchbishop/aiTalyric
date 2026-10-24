@@ -151,9 +151,10 @@ python validate_align.py        # 两个自动验证
 `--from-slots slots.json` 直接渲染——**这就是"展开还可以改"的最终形态：低层完全可控。**
 
 ```bash
-python run_groove.py                                   # 合成句 A，默认转音（13 音）
+python run_groove.py                                   # 合成句 A，默认转音（13 音，2 小节）
+python run_groove.py --elongate 3                      # 整句拉到 3 小节，音更长
 python run_groove.py --melisma 3 --swing 0.6 --push 0,0,1,0,-1
-python run_groove.py --cell-theme sync                 # 节奏型复用（真律动，22 音）
+python run_groove.py --cell-theme sync                 # 节奏型复用（真律动）
 python run_groove.py --cell-theme sparse --variation-every 3
 python run_groove.py --wav testdata/tts.wav --text 我想和你一起看海 \
     --tones 3,3,2,3,1,3,4,3 --melisma 2 --swing 0.5
@@ -161,6 +162,10 @@ python run_groove.py --dump-style style.json && python run_groove.py --style-fil
 python run_groove.py --override 5:3,7:4 --grace
 python run_groove.py --dump-slots slots.json && python run_groove.py --from-slots slots.json
 ```
+
+**时值**：一个音节在 120 BPM 下只有 0.5 拍，硬塞 4 个音就是 32 分音符（62 ms），
+唱不出来。所以默认 `--min-note 0.5`（不短于八分）＋ `--elongate 2.0`（整句拉长），
+两者要一起用——只有前者会把节奏型压成单音。详见 [`docs/USAGE.md`](docs/USAGE.md)。
 
 ### 节奏型复用（`rhythm.py`）
 

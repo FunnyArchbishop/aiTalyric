@@ -137,6 +137,10 @@ def main():
                     help="augment one cell every N syllables (0 = never)")
     ap.add_argument("--max-repeat", type=int, default=2,
                     help="break runs of the same pitch longer than this (0 = off)")
+    ap.add_argument("--elongate", type=float, default=2.0,
+                    help="stretch the phrase so notes are longer (1 = as spoken)")
+    ap.add_argument("--min-note", type=float, default=0.5,
+                    help="shortest note in beats (0.5 = eighth; 0 = no limit)")
     ap.add_argument("--override", default="", help="force note counts, e.g. 5:3,7:4")
     ap.add_argument("--style-file", default="")
     ap.add_argument("--dump-style", default="")
@@ -161,6 +165,8 @@ def main():
         style["chord_every"] = a.chord_every
     if a.grace:
         style["grace"]["enabled"] = True
+    style["elongate"] = float(a.elongate)
+    style["min_note"] = float(a.min_note)
     pattern = a.style or "tail"
     overrides = parse_override(a.override)
 
@@ -171,10 +177,14 @@ def main():
     # Refine the grid until the cell fits inside a typical syllable.
     if a.cell_theme != "none":
         cell = float(style.get("cell", realize.GRID))
-        med_beats = sorted(params["beats"])[len(params["beats"]) // 2]
+        med_beats = sorted(params["beats"])[len(params["beats"]) // 2] * a.elongate
         need = max(sum(c) for c in rhythm.THEMES[a.cell_theme]["cells"])
         while med_beats / cell < need and cell > 0.0625:
             cell /= 2.0
+        # never refine below what the minimum note length allows, otherwise the
+        # cell immediately gets merged away again
+        if a.min_note:
+            cell = max(cell, float(a.min_note) / 2.0)
         if abs(cell - float(style.get("cell", realize.GRID))) > 1e-9:
             print("[grid] cell %.3f -> %.3f beats so a %d-sixteenth cell fits the syllables"
                   % (float(style.get("cell", realize.GRID)), cell, need))

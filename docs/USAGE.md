@@ -164,6 +164,8 @@ python run_groove.py --style-file style.json     # 浅合并，只写想改的�
 |---|---|---|
 | `melisma` | 每音节最多多加几个音 | 2 |
 | `sub_points` | 音节内采样点数（3–7） | 5 |
+| `elongate` | 整句拉长倍数；一个音节本来就只有 0.5 拍，想放两个音就得拉长 | 1.0 |
+| `min_note` | 最短音值（拍）。比它短的相邻音会被合并，总时值不变 | 0.5 |
 | `note_rules.two_above` | 起伏超过多少 → 第 2 个音 | 0.55 |
 | `note_rules.three_above` | 起伏超过多少 → 第 3 个音 | 0.70 |
 | `note_rules.turn_eps` | 中间偏离首尾连线多少算转折 | 0.12 |
@@ -307,6 +309,8 @@ path, ev, world = joint.solve_joint(p2, W, 2)
 --cell-theme {none,sync,dotted,flowing,sparse}   --variation-every 4
 --harmony {fixed,free}     --change-cost 1.2
 --max-repeat 2            同一音最多连续几个（0=不限）
+--elongate 2.0            整句拉长倍数（1=按说话速度）
+--min-note 0.5            最短音值（拍），0.5=八分音符
 --chord-every 2            --grace          --override 5:3,7:4
 --style-file s.json        --dump-style s.json
 --dump-slots x.json        --from-slots x.json
@@ -357,6 +361,27 @@ python validate_align.py                            # 合成真值 + 真实语�
 
 **这是一个显式的取舍：不想要重复，就得让一点轮廓/声调。** 要不要这么换，由你决定。
 
+### 音太短、句子太短（`--elongate` / `--min-note`）
+
+实测一个音节在 120 BPM 下只有 **0.5 拍**，而节奏型的一个 cell 是 4 个十六分。
+把 4 个音塞进 0.5 拍，就是 32 分音符（62 ms）——唱不出来，听起来像颤音。
+
+两个参数必须**一起**用：
+
+- `--min-note 0.5`：比八分还短的相邻音会被合并（总时值不变，网格不动），
+  所以 4 个十六分会变成 2 个八分。默认就是 0.5。
+- `--elongate N`：把整句按 N 倍拉长，给音节腾出空间。
+
+| `--elongate` | 音符数 | 总长 | 最短音 | 时值只用 |
+|---|---|---|---|---|
+| 1.0 | 8 | 4.5 拍（1.1 小节） | 0.50 | 0.5 / 0.75 |
+| 2.0（CLI 默认） | 13 | 8 拍（2 小节） | 0.50 | 0.5 / 1.0 |
+| 3.0 | 20 | 12 拍（3 小节） | 0.50 | 0.5 / 0.75 |
+
+注意两者的耦合：**只有 `--min-note` 会把节奏型压成一个音**（0.5 拍的音节放不下 2 个八分），
+必须配 `--elongate ≥ 2` 才既能拖长又能保留律动。
+`--elongate` 也救了 `run_groove` 的自动网格细化：它现在不会细化到比 `min_note/2` 还细。
+
 ---
 
 ## 五、配方
@@ -370,6 +395,8 @@ python validate_align.py                            # 合成真值 + 真实语�
 | 和声更骚 | `--harmony free --change-cost 0.8`（越小换得越勤） |
 | 严格依字行腔 | `examples/ex05` 里 `w_tone=3.0`，或 `run_demo.py --tone-strict` |
 | 不要同音反复 | `--max-repeat 1`（默认 2；代价见下） |
+| **音太短/太碎** | `--elongate 2~3 --min-note 0.5`（**两个要一起用**，见下） |
+| **旋律要更长** | `--elongate 3`（一句变 3 小节），或 `develop.py --bars 8 --elongate 2`（8 段 × 2 小节） |
 | 换调 | `--tonic 62`（D）`--mode minor` |
 | 更长的结构 | `develop.py --bars 16 --modulate 3` |
 | 拿去唱 | `--vsqx x.vsqx --portamento 1.0`，或 `--ustx x.ustx` 进 OpenUtau |

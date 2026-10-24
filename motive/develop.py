@@ -108,8 +108,11 @@ def build_source(a):
     style = realize.load_style(a.style_file or None)
     if a.melisma is not None:
         style["melisma"] = a.melisma
+    style["elongate"] = float(getattr(a, "elongate", 1.0))
+    style["min_note"] = float(getattr(a, "min_note", 0.5))
     if a.cell_theme != "none":
-        style["cell"] = min(float(style.get("cell", realize.GRID)), 0.125)
+        style["cell"] = min(float(style.get("cell", realize.GRID)),
+                            max(0.125, style["min_note"] / 2.0))
 
     if a.wav:
         import f0_from_wav
@@ -186,6 +189,10 @@ def main():
     ap.add_argument("--smooth", type=int, default=1)
     ap.add_argument("--ref-hz", type=float, default=220.0)
     ap.add_argument("--melisma", type=int, default=None)
+    ap.add_argument("--elongate", type=float, default=1.0,
+                    help="stretch each section (1 = one bar per section)")
+    ap.add_argument("--min-note", type=float, default=0.5,
+                    help="shortest note in beats")
     ap.add_argument("--style-file", default="")
     ap.add_argument("--cell-theme", default="sync", choices=list(__import__("rhythm").THEMES))
     ap.add_argument("--variation-every", type=int, default=4)
@@ -202,7 +209,7 @@ def main():
                                                           "orig", 0, 0,
                                                           start_role="T")
     src_contour = [n["midi"] for n in src_path_notes]
-    bar_beats = 4.0
+    bar_beats = 4.0 * max(0.25, float(getattr(a, "elongate", 1.0)))
 
     plan = section_plan(a.bars)
     melody, chords, rows = [], [], []

@@ -45,6 +45,7 @@ DEFAULTS = dict(
     tonic=60, mode="major", span=12.0, stretch=1.0, smooth=1, tempo=120.0,
     melisma=2, pattern="tail", cell_theme="none", variation=4,
     swing=0.0, push="", grace=False, max_repeat=2,
+    elongate=2.0, min_note=0.5,
     harmony="fixed", change_cost=1.2, chord_every=2,
     w_contour=1.0, sigma=2.0, w_tone=1.2, w_harmony=1.0, w_motion=0.8,
 )
@@ -60,6 +61,8 @@ def build_model(state):
     style["push"] = state["push"]
     style["chord_every"] = int(state["chord_every"])
     style["grace"]["enabled"] = bool(state["grace"])
+    style["elongate"] = float(state["elongate"])
+    style["min_note"] = float(state["min_note"])
 
     ns = argparse.Namespace(
         phrase=state["phrase"], wav=state["wav"], text=state["text"],
@@ -241,7 +244,9 @@ class App:
         self._scale(t, "melisma（多加几个音）", "melisma", 0, 4, 1, row=0)
         self._combo(t, "时值模式", "pattern", list(realize.DEFAULT_STYLE["patterns"]), row=1)
         self._spin(t, "最长同音（0=不限）", "max_repeat", 0, 4, row=2)
-        self._check(t, "允许倚音 grace", "grace", row=3)
+        self._scale(t, "拉长 elongate（整句）", "elongate", 1.0, 4.0, 0.5, row=3)
+        self._scale(t, "最短音值 min_note", "min_note", 0.25, 1.0, 0.25, row=4)
+        self._check(t, "允许倚音 grace", "grace", row=5)
 
         t = self._tabs["律动"]
         self._combo(t, "节奏型", "cell_theme", list(rhythm.THEMES), row=0)
