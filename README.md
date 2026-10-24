@@ -6,6 +6,7 @@
 ```bash
 pip install -r requirements.txt
 cd motive && python selftest.py        # 18 项回归，全绿
+mkdir -p out
 python run_groove.py --cell-theme sync --harmony free \
     --vsqx out/x.vsqx --ustx out/x.ustx    # 一句 → MIDI + VOCALOID 工程 + OpenUtau 工程
 ```
@@ -21,6 +22,17 @@ python run_groove.py --cell-theme sync --harmony free \
 | 发展 | `develop.py` | 8 小节结构 + 轮廓守护 |
 | 导出 | `export.py` `midi_io.py` | .vsqx / .ustx / .mid |
 | 验证 | `selftest.py` `validate_align.py` | 一键回归 |
+| 示例 | `examples/ex01..ex08` | 一个例子一个接口，都能跑 |
+
+**想改什么、怎么改**看 [`docs/USAGE.md`](docs/USAGE.md)：五个数据接口的形状、
+八个可直接运行的改造示例（换前端 / 改转音规则 / 加节奏型 / 加和弦 / 改权重 /
+手改展开结果 / 加导出格式 / 当库用）、命令行速查和常见坑。
+
+```bash
+python examples/ex02_style_knobs.py      # 改转音规则，一次看 5 种风格
+python examples/ex05_weights.py          # 改目标函数权重，两句对比
+python examples/ex06_hand_edit_slots.py  # dump → 手改 → 重新渲染
+```
 
 进度与验收记录见 [`ROADMAP.md`](ROADMAP.md)。
 
