@@ -46,6 +46,7 @@ DEFAULTS = dict(
     melisma=2, pattern="tail", cell_theme="none", variation=4,
     swing=0.0, push="", grace=False, max_repeat=2,
     elongate=2.0, min_note=0.5,
+    instrument="piano",
     harmony="fixed", change_cost=1.2, chord_every=2,
     w_contour=1.0, sigma=2.0, w_tone=1.2, w_harmony=1.0, w_motion=0.8,
 )
@@ -131,41 +132,20 @@ def build_model(state):
 
 # ------------------------------------------------------------ preview audio
 
-def write_preview(path, melody, chords, tempo, sr=22050):
-    """A rough additive synth so you can hear the shape without VOCALOID."""
-    end = 0.0
-    for s, d, p, v in melody + chords:
-        end = max(end, s + d)
-    n = int((end + 0.4) * sr)
-    buf = np.zeros(n + 1)
+def write_preview(path, melody, chords, tempo, sr=22050, instrument="piano"):
+    """Render the preview with a real instrument model (see inst.py).
 
-    def add_note(start, dur, pitch, vel, amp, decay, harmonics):
-        a = int(start * sr)
-        b = min(n, a + int(max(0.02, dur) * sr))
-        if b <= a:
-            return
-        t = np.arange(b - a) / sr
-        f = 440.0 * 2 ** ((pitch - 69) / 12.0)
-        env = np.exp(-t * decay) * np.minimum(1.0, t * 120.0)
-        sig = np.zeros_like(t)
-        for k, w in enumerate(harmonics, start=1):
-            if f * k > sr / 2 - 200:
-                break
-            sig += w * np.sin(2 * np.pi * f * k * t)
-        buf[a:b] += sig * env * amp * (vel / 96.0)
-
-    for (s, d, p, v) in chords:
-        add_note(s, d, p, v, 0.10, 2.0, [1.0, 0.4, 0.2])
-    for (s, d, p, v) in melody:
-        add_note(s, d, p, v, 0.22, 3.2, [1.0, 0.5, 0.25, 0.1])
-
-    peak = float(np.max(np.abs(buf))) or 1.0
-    pcm = (buf / peak * 0.85 * 32767).astype("<i2").tobytes()
-    with wave.open(path, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(sr)
-        w.writeframes(pcm)
+    The old version was a bare sine stack; a piano model makes the same notes
+    sound like music, which is what you actually want to judge while tuning.
+    """
+    import inst
+    tracks = {
+        "melody": [(n[0], n[1], int(n[2]), n[3] if len(n) > 3 else 90)
+                   for n in melody],
+        "chords": [(n[0], n[1], int(n[2]), n[3] if len(n) > 3 else 70)
+                   for n in chords],
+    }
+    inst.render_tracks(tracks, path, tempo, sr=sr)
     return path
 
 
@@ -269,13 +249,19 @@ class App:
         self._scale(t, "w_motion 级进", "w_motion", 0.0, 3.0, 0.1, row=4)
 
         t = self._tabs["导出"]
+        top = ttk.Frame(t)
+        top.pack(fill="x")
+        self._combo(top, "音色（预览用）", "instrument",
+                    ["piano", "epiano", "pluck", "marimba", "pad"], row=0)
         for text, fn in (("播放预览", self.play), ("停止", self.stop),
+                         ("写 WAV", self.export_wav),
                          ("写 MIDI", self.export_midi), ("写 .vsqx", self.export_vsqx),
                          ("写 .ustx", self.export_ustx), ("保存预设", self.save_preset),
                          ("载入预设", self.load_preset), ("随机化", self.randomize)):
             from tkinter import ttk as _t
             _t.Button(t, text=text, command=fn).pack(fill="x", pady=2)
-        ttk.Label(t, text="预览是合成音，只用来听轮廓/律动；\n真正的声音请导出后用 VOCALOID/OpenUtau。",
+        ttk.Label(t, text="「写 WAV」用上面的音色直接导出音频（钢琴音色）。\n"
+                          "要人声才需要重采样后进 VOCALOID/OpenUtau。",
                   wraplength=300, foreground="#888").pack(anchor="w", pady=(8, 0))
 
     def _var(self, key, kind):
@@ -461,7 +447,8 @@ class App:
         self.stop()
         path = write_preview(self._preview, self.model["melody"],
                              self.model["chord_notes"],
-                             float(self.state["tempo"]))
+                             float(self.state["tempo"]),
+                             instrument=self.state.get("instrument", "piano"))
         if HAVE_SOUND:
             winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.status.set("播放预览：%s" % path)
@@ -471,6 +458,18 @@ class App:
     def stop(self):
         if HAVE_SOUND:
             winsound.PlaySound(None, winsound.SND_PURGE)
+
+    def export_wav(self):
+        """Render the current take with the chosen instrument - an audio file."""
+        if not self.model:
+            return
+        path = self._ask(".wav", "aiTalyric_%s.wav" % self.state.get("instrument", "piano"))
+        if not path:
+            return
+        write_preview(path, self.model["melody"], self.model["chord_notes"],
+                      float(self.state["tempo"]), sr=44100,
+                      instrument=self.state.get("instrument", "piano"))
+        self.status.set("已写音频 %s" % path)
 
     def _ask(self, suffix, default):
         from tkinter import filedialog

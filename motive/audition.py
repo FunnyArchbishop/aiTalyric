@@ -35,6 +35,8 @@ def main():
     ap.add_argument("--tempo", type=float, default=None)
     ap.add_argument("--max-repeat", type=int, default=None)
     ap.add_argument("--cell-theme", default=None)
+    ap.add_argument("--instrument", default="piano",
+                    help="piano/epiano/pluck/marimba/pad, or 'voice' for the vocal synth")
     ap.add_argument("--portamento", type=float, default=1.0)
     a = ap.parse_args()
 
@@ -69,12 +71,24 @@ def main():
                        [("melody", 73, model["melody"]),
                         ("chords", 0, model["chord_notes"])])
 
-    sung = []
-    for j, n in enumerate(notes):
-        sung.append(dict(start_beats=n["start"], dur_beats=n["dur"],
-                         midi=n["midi"], vowel=sing.vowel_of_lyric(n["lyric"])))
     wav = os.path.join(a.out, "take.wav")
-    path, secs = sing.render(sung, wav, tempo)
+    if a.instrument == "voice":
+        sung = []
+        for j, n in enumerate(notes):
+            sung.append(dict(start_beats=n["start"], dur_beats=n["dur"],
+                             midi=n["midi"], vowel=sing.vowel_of_lyric(n["lyric"])))
+        path, secs = sing.render(sung, wav, tempo)
+        flavour = "voice"
+    else:
+        import inst
+        tracks = {
+            "melody": [(n[0], n[1], int(n[2]), n[3] if len(n) > 3 else 90, a.instrument)
+                       for n in model["melody"]],
+            "chords": [(c[0], c[1], int(c[2]), 70, a.instrument)
+                       for c in model["chord_notes"]],
+        }
+        path, secs = inst.render_tracks(tracks, wav, tempo)
+        flavour = a.instrument
 
     m = model["metrics"]
     durs = sorted(int(round(x[1] * 60.0 / tempo * 1000)) for x in model["melody"])
@@ -85,7 +99,7 @@ def main():
           % (durs[0], durs[len(durs) // 2], durs[-1]))
     print("vsqx check:", chk["notes"], "notes,", chk["pit_points"], "PIT points")
     print("[ok]", vsqx)
-    print("[ok]", wav, "(%.1f s)" % secs)
+    print("[ok]", wav, "(%s, %.1f s)" % (flavour, secs))
 
 
 if __name__ == "__main__":

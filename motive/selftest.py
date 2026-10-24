@@ -157,6 +157,26 @@ def t_midi():
           "%d bytes" % len(b))
 
 
+def t_inst():
+    import wave
+    import inst
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "t.wav")
+    tracks = {"melody": [(0.0, 1.0, 60, 90), (1.0, 1.0, 64, 90)],
+              "chords": [(0.0, 2.0, 48, 70)]}
+    path, secs = inst.render_tracks(tracks, p, 120.0, sr=22050)
+    with wave.open(path) as w:
+        x = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(float) / 32768
+    peak = float(np.max(np.abs(x)))
+    # a piano note must decay: compare the first and the last tenth
+    head = float(np.sqrt((x[:len(x) // 10] ** 2).mean()))
+    tail = float(np.sqrt((x[-len(x) // 10:] ** 2).mean()))
+    check("inst: renders audible audio", peak > 0.1 and len(x) > 22050,
+          "%.1f s, peak %.2f" % (len(x) / 22050.0, peak))
+    check("inst: notes decay like a piano", head > tail * 2,
+          "head %.3f vs tail %.3f" % (head, tail))
+
+
 def t_gui():
     import gui
     m = gui.build_model(dict(gui.DEFAULTS))
@@ -191,7 +211,7 @@ if __name__ == "__main__":
     print("aiTalyric selftest")
     print("=" * 60)
     for fn in (t_decode, t_align, t_melisma, t_rhythm, t_develop, t_export, t_midi,
-               t_gui):
+               t_inst, t_gui):
         print("[%s]" % fn.__name__[2:])
         fn()
     print("=" * 60)

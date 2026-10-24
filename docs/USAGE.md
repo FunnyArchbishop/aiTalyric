@@ -403,6 +403,35 @@ python validate_align.py                            # 合成真值 + 真实语�
 
 ---
 
+## 五·五、不用人声：乐器渲染（`inst.py`）
+
+要听旋律又想避开虚拟歌手时，用乐器把音符弹出来。加法合成建模，带非谐分音、
+锤击瞬态、制音器释放、力度影响亮度。
+
+```bash
+python inst.py --preset out_gui/preset_minor_fixed.json -o out_gui/piano.wav
+python inst.py --preset p.json --instrument epiano --chord-instrument pad -o x.wav
+python inst.py out_gui/test1_p12.vsqx -o out_gui/test1_piano.wav     # 只有旋律
+python audition.py --preset p.json --instrument piano -o out_take     # 工程 + MIDI + WAV
+```
+
+| 音色 | 听感 |
+|---|---|
+| `piano` | 钢琴（默认） |
+| `epiano` | 电钢琴，衰减慢、带点钟声 |
+| `pluck` | 拨弦/竖琴，衰减很快 |
+| `marimba` | 马林巴，分音少 |
+| `pad` | 铺底，慢起音、持续 |
+| `voice` | 走 `sing.py` 的共振峰人声合成（`audition.py --instrument voice`） |
+
+GUI 的「导出」页有 **音色** 下拉 + **写 WAV** 按钮，点一下就是上面这条命令；
+「播放预览」也用同一个引擎，所以听到的就是钢琴，不再是正弦音。
+
+**钢琴渲染的两个已知取舍**：它是加法合成，不是采样，所以没有真实的共鸣和踏板；
+快速密集的音符（<150 ms）会有锤击噪声堆积，听起来偏"脆"。要真钢琴就把 MIDI 拖进 DAW。
+
+---
+
 ## 六、常见坑
 
 1. **导出目录要先存在**：`--out` 会自动建目录，`--vsqx out/x.vsqx` 不会。

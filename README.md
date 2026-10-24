@@ -5,12 +5,16 @@
 
 ```bash
 pip install -r requirements.txt
-cd motive && python selftest.py        # 21 项回归，全绿
-python gui.py                          # 调参台：滑杆 + 钢琴卷帘 + 预览播放
+cd motive && python selftest.py        # 25 项回归，全绿
+python gui.py                          # 调参台：滑杆 + 钢琴卷帘 + 钢琴试听
+python inst.py --preset out_gui/preset_minor_fixed.json -o out_gui/piano.wav   # 乐器渲染成音频
 mkdir -p out
 python run_groove.py --cell-theme sync --harmony free \
     --vsqx out/x.vsqx --ustx out/x.ustx    # 一句 → MIDI + VOCALOID 工程 + OpenUtau 工程
 ```
+
+**不需要虚拟歌手也能出音频**：`inst.py` 用加法合成模拟钢琴/电钢/拨弦/马林巴/铺底，
+直接读 MIDI 音符或预设，写成 WAV。要人声才需要 VOCALOID / OpenUtau。
 
 流水线：`音频/文本 → 音节边界 + F0 → 动机参数 → 转音与律动展开 → 联合解码 → MIDI / .vsqx / .ustx`
 
@@ -23,6 +27,8 @@ python run_groove.py --cell-theme sync --harmony free \
 | 解码 | `joint.py` `theory.py` | 旋律与和弦的联合 DP |
 | 发展 | `develop.py` | 8 小节结构 + 轮廓守护 |
 | 导出 | `export.py` `midi_io.py` | .vsqx / .ustx / .mid |
+| 试听 | `inst.py`（乐器）`sing.py`（人声）`audition.py`（预设→音频一条命令） | 不需要任何编辑器就能出 WAV |
+| 检查 | `vsqx_tool.py` | 看音域/时值告警、整体移调 |
 | 验证 | `selftest.py` `validate_align.py` | 一键回归 |
 | 示例 | `examples/ex01..ex08` | 一个例子一个接口，都能跑 |
 
