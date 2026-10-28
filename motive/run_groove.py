@@ -26,6 +26,7 @@ import os
 import align
 import export
 import joint
+import progressions
 import midi_io
 import realize
 import rhythm
@@ -127,6 +128,11 @@ def main():
                     choices=list(rhythm.THEMES), help="rhythmic cell theme")
     ap.add_argument("--harmony", default="fixed", choices=["fixed", "free"],
                     help="free = the DP paces chord changes itself")
+    ap.add_argument("--progression-mode", default="auto", choices=progressions.MODES)
+    ap.add_argument("--progression-preset", default="pop",
+                    choices=list(progressions.PRESETS["major"]))
+    ap.add_argument("--chord-progression", default="",
+                    help="custom Roman numerals, e.g. I,V,vi,IV")
     ap.add_argument("--change-cost", type=float, default=1.2,
                     help="cost of changing chord with --harmony free")
     ap.add_argument("--vsqx", default="", help="export a VOCALOID4 .vsqx")
@@ -148,6 +154,11 @@ def main():
     ap.add_argument("--from-slots", default="")
     ap.add_argument("--out", default="out_groove")
     a = ap.parse_args()
+
+    if a.from_slots and a.progression_mode != "free":
+        ap.error("--from-slots preserves saved chords; use --progression-mode free")
+    if a.progression_mode == "custom" and not a.chord_progression.strip():
+        ap.error("custom mode requires --chord-progression")
 
     if a.dump_style:
         print("[ok] wrote", realize.dump_style(a.dump_style))
@@ -171,6 +182,12 @@ def main():
     overrides = parse_override(a.override)
 
     params = load_params(a, style)
+    if a.progression_mode != "free":
+        try:
+            progressions.candidates(dict(params, progression_mode=a.progression_mode,
+                progression_preset=a.progression_preset, chord_progression=a.chord_progression))
+        except ValueError as exc:
+            ap.error(str(exc))
 
     # A rhythmic cell is 4 sixteenths; a syllable measured at ~0.5 beat only has
     # room for 2 sixteenths, so the cell would be truncated and never heard.
@@ -203,6 +220,10 @@ def main():
     if a.harmony == "free":
         p2["harmony_free"] = True
         p2["harmony_change_cost"] = a.change_cost
+
+    p2.update(progression_mode=a.progression_mode,
+              progression_preset=a.progression_preset,
+              chord_progression=a.chord_progression)
 
     if a.from_slots:
         doc = realize.load_slots(a.from_slots)
@@ -279,6 +300,10 @@ def main():
                  % (s["start"], ch, ">" if s["first"] else "",
                     nm, cl, sy + 1, s["k"] + 1, s["dur"], v))
     L.append("")
+    if ev is not None:
+        L.append("进行模式 : %s / %s" %
+                 (a.progression_mode, ev.get("selected_progression", "free")))
+        print("progression:", a.progression_mode, ev.get("selected_progression", "free"))
     L.append("和弦进行 : %s   (%s)"
              % ("-".join(prog),
                 "和声节奏由 DP 决定" if a.harmony == "free"

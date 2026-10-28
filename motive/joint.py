@@ -145,10 +145,45 @@ def _emit(params, world, W, targets, i, chord_rate):
     if hw is not None:
         strong *= float(hw[i])
     e_h = W["w_harmony"] * strong * (~world["in_chord"]).astype(float)  # (m,npitch)
-    return e[None, :] + e_h
+    costs = e[None, :] + e_h
+    plan = params.get("chord_plan")
+    if plan is not None:
+        labels = [chord[0] for chord in world["vocab"]]
+        costs = np.where(np.array(labels)[:, None] == plan[i], costs, np.inf)
+    return costs
 
 
 def solve_joint(params, W, chord_rate=2, verbose=False, max_repeat=2,
+                refine_rounds=2):
+    """Select a progression, then jointly decode its melody and harmony.
+
+    progression_mode: free (legacy), auto, preset, custom. Templates cycle
+    at harmonic boundaries; auto compares complete decodings of all presets.
+    """
+    import progressions
+    mode = params.get("progression_mode", "free")
+    if mode not in progressions.MODES:
+        raise ValueError("unknown progression mode: %s" % mode)
+    if chord_rate < 1:
+        raise ValueError("chord_rate must be >= 1")
+    if mode == "free":
+        return _solve_with_repeats(params, W, chord_rate, verbose,
+                                   max_repeat, refine_rounds)
+    choices = progressions.candidates(params)
+    results = []
+    for name, labels in choices:
+        p = dict(params)
+        p["chord_plan"] = progressions.plan(p, labels, chord_rate)
+        path, ev, world = _solve_with_repeats(
+            p, W, chord_rate, verbose, max_repeat, refine_rounds)
+        ev["progression_mode"] = mode
+        ev["selected_progression"] = name
+        ev["progression_pattern"] = labels
+        results.append((path, ev, world))
+    return min(results, key=lambda result: result[1]["decode_cost"])
+
+
+def _solve_with_repeats(params, W, chord_rate=2, verbose=False, max_repeat=2,
                 refine_rounds=2):
     """Decode melody + harmony.  With max_repeat set, runs of the same pitch
     longer than that are broken up by re-decoding with a local penalty.
@@ -269,7 +304,9 @@ def _solve_once(params, W, chord_rate=2, verbose=False):
         c, p = divmod(prev_idx, npitch)
         path.append((i - 1, c, p))
     path.reverse()
-    return path, evaluate(path, params, W, chord_rate), world
+    ev = evaluate(path, params, W, chord_rate)
+    ev["decode_cost"] = float(flat.min())
+    return path, ev, world
 
 
 def evaluate(path, params, W, chord_rate):

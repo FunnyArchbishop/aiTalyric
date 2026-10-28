@@ -74,6 +74,62 @@ python gui.py --smoke        # 建窗口→渲染一次→写 smoke.mid/wav/vsqx
 
 ---
 
+## 和弦进行模式（新增）
+
+`run_groove.py` 与 GUI 默认使用 `auto`，从当前调式的四种预设中分别完成旋律/和声解码，
+按解码代价选择最低的一种。相同输入的选择是确定性的，不是随机抽取。
+Python 的 `joint.solve_joint()` 未传 `progression_mode` 时仍保留旧的自由配和弦行为。
+
+| 模式 | 行为 |
+|---|---|
+| `auto` | 自动比较 pop、classic、jazz、canon |
+| `preset` | 手动选择一个预设，严格按进行循环 |
+| `custom` | 自定义罗马数字和弦序列，严格按顺序循环 |
+| `free` | 使用原有联合解码器，自主选择单个和弦，不限定模板 |
+
+| 预设 | major / penta | minor |
+|---|---|---|
+| pop | I–V–vi–IV | i–VI–III–VII |
+| classic | I–IV–V–I | i–iv–V–i |
+| jazz | ii7–V7–I–I | ii–V7–i–i |
+| canon | I–V–vi–iii–IV–I–IV–V | i–V–VI–III–iv–i–iv–V |
+
+预设名是模板标签；小调的 `jazz` 使用词汇表现有的 ii 减三和弦。
+`penta` 沿用大调和弦词汇，旋律仍限制在五声音阶内。
+
+```bash
+cd /workspace/aiTalyric/motive
+../.venv/bin/python run_groove.py --progression-mode auto
+../.venv/bin/python run_groove.py --progression-mode preset --progression-preset pop
+../.venv/bin/python run_groove.py --progression-mode custom --chord-progression "I,V,vi,IV"
+../.venv/bin/python run_groove.py --mode minor --progression-mode custom --chord-progression "i,VI,iv,V"
+../.venv/bin/python run_groove.py --progression-mode free --harmony free --change-cost 1.2
+```
+
+GUI「和声」页可切换「进行模式」「进行预设」；自定义序列输入后按回车应用。
+报告显示实际选中的模板与和弦序列，修改后会重新生成旋律和伴奏。
+自定义支持逗号、空格或短横线分隔，大小写区分和弦性质；非法和弦会显示错误。
+
+进行选择与和声节奏是两个维度：`--harmony fixed` 按 `--chord-every N` 的音节边界推进，
+音节内的转音保持当前和弦；`--harmony free` 时，模板模式会在每个音符推进一项。
+若希望由算法自主决定换和弦时机，组合 `--progression-mode free --harmony free`。
+进行长度不足时循环，片段较短时截取，不强制播放整个循环。
+`--from-slots` 保留文件内已有和弦，需配合 `--progression-mode free`，不重新选择进行。
+
+Python 接口（在 `realize.to_params()` 之后设置）：
+
+```python
+p2.update(progression_mode="preset", progression_preset="pop")
+# 或 p2.update(progression_mode="custom", chord_progression=["I", "V", "vi", "IV"])
+# 或 p2.update(progression_mode="auto")
+path, metrics, world = joint.solve_joint(p2, weights, chord_rate=2)
+print(metrics["selected_progression"], metrics["progression_pattern"])
+```
+
+运行新增检查：`../.venv/bin/python -m unittest test_progressions -v`。
+
+---
+
 ## 二、五个数据接口
 
 整条链只有五个"形状约定"，改任何一个都不影响其他层。
@@ -445,3 +501,18 @@ GUI 的「导出」页有 **音色** 下拉 + **写 WAV** 按钮，点一下就�
    换声库时 `vVoice` 的 `id` 要换成你本地声库的 id。
 6. **`penta` 调式的和弦词汇直接复用大调**，不是真正的五声和声，别当成结论用。
 7. **真实语音上的对齐还没有人工标注验证**，只有合成音频的定量结论（中位 19.6 ms）。
+
+## 二维和弦紧张度图谱
+
+运行 `python gui.py`，打开右侧「和弦紧张度图谱」标签页：
+
+1. 在下拉框中选择需要修改的进行位置。
+2. 点击二维图中的和弦点；点重叠时，从弹出菜单选择和弦。
+3. 系统切换为 `custom`，替换该位置并重新生成旋律、伴奏和导出内容。
+
+横轴表示和弦自身紧张度，依据半音/全音/三全音音程、功能及和弦词汇惩罚估算；
+纵轴表示相对前一个和弦的转换张力，依据音级移动距离及功能衔接代价估算。
+两轴范围均为 0–1，是规则模型，不是听感的客观测量。首个和弦无前驱，纵轴为 0。
+绿色、蓝色、红色分别表示主功能、下属功能、属功能，当前和弦用黄色高亮。
+切换位置会根据前一个和弦重算纵轴。编辑的是实际播放片段中的进行位置，重复和弦也保留独立位置。
+编辑结果可用现有「保存预设」保存，或导出 MIDI / VSQX / USTX。

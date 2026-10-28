@@ -24,6 +24,8 @@ import numpy as np
 
 import export
 import joint
+import progressions
+import tension_map
 import midi_io
 import realize
 import rhythm
@@ -47,6 +49,7 @@ DEFAULTS = dict(
     swing=0.0, push="", grace=False, max_repeat=2,
     elongate=2.0, min_note=0.5,
     instrument="piano",
+    progression_mode="auto", progression_preset="pop", chord_progression="I,V,vi,IV",
     harmony="fixed", change_cost=1.2, chord_every=2,
     w_contour=1.0, sigma=2.0, w_tone=1.2, w_harmony=1.0, w_motion=0.8,
 )
@@ -94,6 +97,10 @@ def build_model(state):
         p2["harmony_free"] = True
         p2["harmony_change_cost"] = float(state["change_cost"])
 
+    p2.update(progression_mode=state.get("progression_mode", "auto"),
+              progression_preset=state.get("progression_preset", "pop"),
+              chord_progression=state.get("chord_progression", ""))
+
     W = dict(w_contour=float(state["w_contour"]), sigma=float(state["sigma"]),
              w_tone=float(state["w_tone"]), w_harmony=float(state["w_harmony"]),
              w_motion=float(state["w_motion"]))
@@ -124,10 +131,12 @@ def build_model(state):
                    non_chord=ev["harmony_violations"], max_leap=ev["max_leap"],
                    stepwise=ev["stepwise_ratio"], total=ev["total"],
                    max_repeat=ev.get("max_repeat", 1),
+                   selected_progression=ev.get("selected_progression", "free"),
                    progression="-".join(r["label"] for r in runs))
     return dict(params=params, slots=slots, info=info, melody=melody,
                 chord_notes=chord_notes, runs=runs, metrics=metrics,
-                style=style)
+                style=style, chord_sequence=[world["vocab"][c][0] for j, (_, c, _) in enumerate(path)
+                    if j == 0 or joint._is_boundary(p2, j, style.get("chord_every", 2))])
 
 
 # ------------------------------------------------------------ preview audio
@@ -184,7 +193,15 @@ class App:
 
         self._build_controls(left)
 
-        self.canvas = tk.Canvas(right, background="#1b1b1f", height=420,
+        views = ttk.Notebook(right)
+        views.pack(fill="both", expand=True)
+        piano = ttk.Frame(views)
+        map_frame = ttk.Frame(views)
+        views.add(piano, text="钢琴卷帘")
+        views.add(map_frame, text="和弦紧张度图谱")
+        self.tension_map = tension_map.TensionMap(map_frame, self.select_map_chord)
+
+        self.canvas = tk.Canvas(piano, background="#1b1b1f", height=420,
                                 highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
         self.canvas.bind("<Configure>", lambda e: self.draw())
@@ -240,6 +257,11 @@ class App:
         self._combo(t, "和声节奏", "harmony", ["fixed", "free"], row=0)
         self._scale(t, "换和弦代价", "change_cost", 0.2, 4.0, 0.1, row=1)
         self._spin(t, "每几音节换一次", "chord_every", 1, 8, row=2)
+
+        self._combo(t, "进行模式", "progression_mode", progressions.MODES, row=3)
+        self._combo(t, "进行预设", "progression_preset",
+                    list(progressions.PRESETS["major"]), row=4)
+        self._entry(t, "自定义进行（回车应用）", "chord_progression", row=5, width=24)
 
         t = self._tabs["权重"]
         self._scale(t, "w_contour 贴轮廓", "w_contour", 0.0, 4.0, 0.1, row=0)
@@ -351,13 +373,27 @@ class App:
             self.status.set("生成失败：%s" % exc)
             return
         self.draw()
+        self.tension_map.update(self.state["mode"], self.model["chord_sequence"])
         self.report()
         m = self.model["metrics"]
         self.status.set("音符 %d / 音节 %d | 和弦 %d | RMS %.2f | 倒字 %d | "
                         "非和弦 %d | %s"
                         % (m["notes"], m["syllables"], m["chords"],
                            m["contour_rms"], m["tone_violations"],
-                           m["non_chord"], m["progression"]))
+                           m["non_chord"], m["selected_progression"] + ": " + m["progression"]))
+
+    def select_map_chord(self, index, label):
+        if not self.model:
+            return
+        sequence = list(self.model["chord_sequence"])
+        sequence[index] = label
+        for key, value in (("progression_mode", "custom"),
+                           ("chord_progression", ",".join(sequence))):
+            self.state[key] = value
+            self.state["_var_" + key].set(value)
+        if self._after:
+            self.root.after_cancel(self._after)
+        self.rebuild()
 
     # -- drawing ----------------------------------------------------------
     def draw(self):
@@ -428,6 +464,8 @@ class App:
                 "轮廓RMS %.2f | 倒字 %d | 非和弦音 %d | 最大音程 %d | 级进比 %.2f | 最长同音 %d | 总能量 %.2f"
                 % (m["contour_rms"], m["tone_violations"], m["non_chord"],
                    m["max_leap"], m["stepwise"], m.get("max_repeat", 1), m["total"]),
+                "进行模式：%s | 选中：%s | %s" % (self.state.get("progression_mode", "auto"),
+                    m["selected_progression"], m["progression"]),
                 "逐音节：" + " ".join("%d" % i["notes"] for i in self.model["info"]),
                 "音高：" + " ".join(theory.note_name(n[2]) for n in self.model["melody"])]
         self.text.configure(state="normal")
