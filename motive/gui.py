@@ -26,6 +26,7 @@ import export
 import joint
 import progressions
 import tension_map
+import editor
 import midi_io
 import realize
 import rhythm
@@ -135,6 +136,7 @@ def build_model(state):
                    progression="-".join(r["label"] for r in runs))
     return dict(params=params, slots=slots, info=info, melody=melody,
                 chord_notes=chord_notes, runs=runs, metrics=metrics,
+                editable_sequence=list(ev.get("progression_pattern", [])),
                 style=style, chord_sequence=[world["vocab"][c][0] for j, (_, c, _) in enumerate(path)
                     if j == 0 or joint._is_boundary(p2, j, style.get("chord_every", 2))])
 
@@ -154,6 +156,8 @@ def write_preview(path, melody, chords, tempo, sr=22050, instrument="piano"):
         "chords": [(n[0], n[1], int(n[2]), n[3] if len(n) > 3 else 70)
                    for n in chords],
     }
+    for name, notes in tracks.items():
+        tracks[name] = [(*n, instrument) for n in notes]
     inst.render_tracks(tracks, path, tempo, sr=sr)
     return path
 
@@ -178,6 +182,7 @@ class App:
         root.geometry("1280x800")
         root.minsize(1080, 680)
         self.model = None
+        self.history = editor.History()
         self._after = None
         self._preview = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "out_gui", "preview.wav")
@@ -192,6 +197,8 @@ class App:
         right.pack(side="left", fill="both", expand=True)
 
         self._build_controls(left)
+        ttk.Button(left, text="打开和声工作台（极坐标 / 和弦库 / 织体）",
+                   command=self.open_studio).pack(fill="x", side="bottom")
 
         views = ttk.Notebook(right)
         views.pack(fill="both", expand=True)
@@ -199,7 +206,7 @@ class App:
         map_frame = ttk.Frame(views)
         views.add(piano, text="钢琴卷帘")
         views.add(map_frame, text="和弦紧张度图谱")
-        self.tension_map = tension_map.TensionMap(map_frame, self.select_map_chord)
+        self.tension_map = tension_map.TensionMap(map_frame, self.select_map_chord, self.edit_map_sequence, self.restore_history)
 
         self.canvas = tk.Canvas(piano, background="#1b1b1f", height=420,
                                 highlightthickness=0)
@@ -214,7 +221,15 @@ class App:
         ttk.Label(root, textvariable=self.status, anchor="w",
                   relief="sunken").pack(fill="x", side="bottom")
 
+        root.bind("<Control-z>", lambda e: self.restore_history(-1))
+        root.bind("<Control-y>", lambda e: self.restore_history(1))
         self.rebuild()
+
+    def open_studio(self):
+        import studio
+        window = self.tk.Toplevel(self.root)
+        initial = studio.project.from_model(self.model, self.state)
+        self._studio = studio.Studio(window, initial)
 
     # -- controls ---------------------------------------------------------
     def _build_controls(self, parent):
@@ -372,8 +387,10 @@ class App:
         except Exception as exc:            # a bad knob value must not kill the app
             self.status.set("生成失败：%s" % exc)
             return
+        self.history.record(clean)
         self.draw()
-        self.tension_map.update(self.state["mode"], self.model["chord_sequence"])
+        self.tension_map.update(self.state["mode"],
+            self.model["editable_sequence"] or self.model["chord_sequence"])
         self.report()
         m = self.model["metrics"]
         self.status.set("音符 %d / 音节 %d | 和弦 %d | RMS %.2f | 倒字 %d | "
@@ -385,7 +402,7 @@ class App:
     def select_map_chord(self, index, label):
         if not self.model:
             return
-        sequence = list(self.model["chord_sequence"])
+        sequence = list(self.model.get("editable_sequence") or self.model["chord_sequence"])
         sequence[index] = label
         for key, value in (("progression_mode", "custom"),
                            ("chord_progression", ",".join(sequence))):
@@ -394,6 +411,36 @@ class App:
         if self._after:
             self.root.after_cancel(self._after)
         self.rebuild()
+
+    def edit_map_sequence(self, action):
+        sequence = self.model["editable_sequence"] or self.model["chord_sequence"]
+        try:
+            sequence, index = editor.edit_sequence(sequence, self.tension_map.index, action)
+        except ValueError as exc:
+            self.status.set(str(exc))
+            return
+        self.tension_map.index = index
+        self.state["progression_mode"] = "custom"
+        self.state["chord_progression"] = ",".join(sequence)
+        for key in ("progression_mode", "chord_progression"):
+            self.state["_var_" + key].set(self.state[key])
+        if self._after:
+            self.root.after_cancel(self._after)
+        self.rebuild()
+
+    def restore_history(self, delta):
+        snapshot = self.history.move(delta)
+        if snapshot is None:
+            return "break"
+        if self._after:
+            self.root.after_cancel(self._after)
+        self.state.update(snapshot)
+        for key, value in snapshot.items():
+            variable = self.state.get("_var_" + key)
+            if variable is not None:
+                variable.set(value)
+        self.rebuild()
+        return "break"
 
     # -- drawing ----------------------------------------------------------
     def draw(self):
